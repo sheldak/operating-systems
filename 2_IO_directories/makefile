@@ -10,4 +10,4 @@ run:
 		make clean
 		make compile
 
-		./main generate wyniki.txt 100 512
+		./main generate wyniki.txt 100 512 sort wyniki.txt 100 512 lib
