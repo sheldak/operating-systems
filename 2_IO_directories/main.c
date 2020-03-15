@@ -164,6 +164,51 @@ void sortLib(char *filename, int recordNum, int recordLen) {
     fclose(file);
 }
 
+void copySys(char *filename1, char *filename2, int records, int bufferSize) {
+    int fileDesc1 = open(filename1, O_RDONLY);
+    if(fileDesc1 < 0)
+        perror("problem with opening first file when copying (sys)");
+
+    int fileDesc2 = open(filename2, O_WRONLY);
+    if(fileDesc2 < 0)
+        perror("problem with opening second file when copying (sys)");
+
+    char *buffer = calloc(bufferSize+1, sizeof(char));
+
+    for(int i=0; i < records; i++) {
+        lseek(fileDesc1, (bufferSize+1) * i, SEEK_SET);
+        if (read(fileDesc1, buffer, bufferSize+1) < 0)
+            perror("failed in getting record (sys)");
+
+        lseek(fileDesc2, (bufferSize + 1) * i, SEEK_SET);
+        write(fileDesc2, buffer, bufferSize+1);
+    }
+}
+
+void copyLib(char *filename1, char *filename2, int records, int bufferSize) {
+    FILE *file1 = fopen(filename1, "r");
+    if(!file1)
+        perror("problem with opening first file when copying (lib)");
+
+    FILE *file2 = fopen(filename2, "w");
+    if(!file2)
+        perror("problem with opening second file when copying (lib)");
+
+    char *buffer = calloc(bufferSize+1, sizeof(char));
+
+    for(int i=0; i < records; i++) {
+        fseek(file1, (bufferSize+1) * i, SEEK_SET);
+        if (fread(buffer, sizeof(char), bufferSize+1, file1) < 0)
+            perror("failed in getting record (lib)");
+
+        fseek(file2, (bufferSize + 1) * i, SEEK_SET);
+        fwrite(buffer, sizeof(char), bufferSize+1, file2);
+    }
+
+    fclose(file1);
+    fclose(file2);
+}
+
 int main(int argc, char **argv) {
     if(argc < 5)
         perror("too few arguments");
@@ -195,12 +240,12 @@ int main(int argc, char **argv) {
             char *endPtr;
             recordsNum = (int) strtol(argv[i+2], &endPtr, 10);
             if(recordsNum <= 0)
-                perror("invalid number of records to generate");
+                perror("invalid number of records to sort");
 
             int recordLen;
             recordLen = (int) strtol(argv[i+3], &endPtr, 10);
             if(recordLen <= 0)
-                perror("invalid size of records to generate");
+                perror("invalid size of records to sort");
 
             // sorting
             if(strcmp(argv[i+4], commands[3]) == 0)       // sys
@@ -214,6 +259,29 @@ int main(int argc, char **argv) {
         else if(strcmp(argv[i], commands[2]) == 0) {    // copy
             if(i+5 >= argc)
                 perror("too few arguments after copy call");
+
+            // extracting parameters
+            char *filename1 = argv[i+1];
+            char *filename2 = argv[i+2];
+
+            int recordsNum;
+            char *endPtr;
+            recordsNum = (int) strtol(argv[i+3], &endPtr, 10);
+            if(recordsNum <= 0)
+                perror("invalid number of records to copy");
+
+            int recordLen;
+            recordLen = (int) strtol(argv[i+4], &endPtr, 10);
+            if(recordLen <= 0)
+                perror("invalid size of records to copy");
+
+            // copying
+            if(strcmp(argv[i+5], commands[3]) == 0)       // sys
+                copySys(filename1, filename2, recordsNum, recordLen);
+            else if(strcmp(argv[i+5], commands[4]) == 0)  // lib
+                copyLib(filename1, filename2, recordsNum, recordLen);
+            else
+                perror("invalid type of copying");
         }
     }
 }
