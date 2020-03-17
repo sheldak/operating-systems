@@ -1,10 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
 #include <fcntl.h>
-#include <sys/types.h>
-#include <sys/stat.h>
+#include <sys/times.h>
 #include <zconf.h>
 
 #define SIZE 150
@@ -12,7 +10,7 @@
 void generate(char *filename, char *recordsNum, char *recordSize) {
     char *command = calloc(SIZE, sizeof(char));
 
-    strcpy(command, "head -c 10000000 /dev/urandom | tr -dc 'a-z'");
+    strcpy(command, "head -c 100000000000 /dev/urandom | tr -dc 'a-z'");
     strcat(command, " | fold -w ");
     strcat(command, recordSize);
     strcat(command, " | head -n ");
@@ -169,6 +167,7 @@ void copySys(char *filename1, char *filename2, int records, int bufferSize) {
     if(fileDesc1 < 0)
         perror("problem with opening first file when copying (sys)");
 
+    creat(filename2, 0666);
     int fileDesc2 = open(filename2, O_WRONLY);
     if(fileDesc2 < 0)
         perror("problem with opening second file when copying (sys)");
@@ -209,14 +208,40 @@ void copyLib(char *filename1, char *filename2, int records, int bufferSize) {
     fclose(file2);
 }
 
+void writeHeader(FILE *file, char *recordsNum, char *recordLen) {
+    fprintf(file, "--- %s records of length %s ---\n\n", recordsNum, recordLen);
+}
+
+double timeDifference(clock_t start, clock_t end) {
+    return (double) (end - start) / (double) sysconf(_SC_CLK_TCK);
+}
+
+void writeResults(FILE *file, double realT, double userT, double systemT) {
+    fprintf(file, "REAL       USER       SYSTEM\n");
+    fprintf(file, "%f  %f  %f\n\n", realT, userT, systemT);
+}
+
 int main(int argc, char **argv) {
     if(argc < 5)
         perror("too few arguments");
 
     char *commands[5] = {"generate", "sort", "copy", "sys", "lib"};
 
+    // time
+    struct tms *tmsTime[2];
+    for(int i=0; i<2; i++)
+        tmsTime[i] = calloc(1, sizeof(struct tms *));
+
+    clock_t realTime[2];
+
+    // result file
+    FILE *resultFile = fopen("wyniki.txt", "a");
+    if(!resultFile)
+        perror("cannot open result file");
+
 
     for(int i=1; i<argc; i++) {
+        realTime[0] = times(tmsTime[0]);
         if(strcmp(argv[i], commands[0]) == 0) {         // generate
             if(i+3 >= argc)
                 perror("too few arguments after generate call");
@@ -228,6 +253,11 @@ int main(int argc, char **argv) {
 
             // generating random text to file
             generate(filename, recordsNum, recordLen);
+
+            // writing header to result file
+            writeHeader(resultFile, recordsNum, recordLen);
+
+            i += 3;
         }
         else if(strcmp(argv[i], commands[1]) == 0) {    // sort
             if(i+4 >= argc)
@@ -248,13 +278,25 @@ int main(int argc, char **argv) {
                 perror("invalid size of records to sort");
 
             // sorting
-            if(strcmp(argv[i+4], commands[3]) == 0)       // sys
+            if(strcmp(argv[i+4], commands[3]) == 0) {     // sys
+                fprintf(resultFile, "SORTING USING SYSTEM FUNCTIONS\n\n");
                 sortSys(filename, recordsNum, recordLen);
-            else if(strcmp(argv[i+4], commands[4]) == 0)  // lib
+            }
+            else if(strcmp(argv[i+4], commands[4]) == 0) {  // lib
+                fprintf(resultFile, "SORTING USING LIBRARY FUNCTIONS\n\n");
                 sortLib(filename, recordsNum, recordLen);
+            }
             else
                 perror("invalid type of sort");
 
+            // writing time to result file
+            realTime[1] = times(tmsTime[1]);
+            writeResults(resultFile, timeDifference(realTime[0], realTime[1]),
+                         timeDifference(tmsTime[0]->tms_utime, tmsTime[1]->tms_utime),
+                         timeDifference(tmsTime[0]->tms_stime, tmsTime[1]->tms_stime));
+            fprintf(resultFile, "\n");
+
+            i += 4;
         }
         else if(strcmp(argv[i], commands[2]) == 0) {    // copy
             if(i+5 >= argc)
@@ -276,13 +318,27 @@ int main(int argc, char **argv) {
                 perror("invalid size of records to copy");
 
             // copying
-            if(strcmp(argv[i+5], commands[3]) == 0)       // sys
+            if(strcmp(argv[i+5], commands[3]) == 0) {      // sys
+                fprintf(resultFile, "COPYING USING SYSTEM FUNCTIONS\n\n");
                 copySys(filename1, filename2, recordsNum, recordLen);
-            else if(strcmp(argv[i+5], commands[4]) == 0)  // lib
+            }
+            else if(strcmp(argv[i+5], commands[4]) == 0) { // lib
+                fprintf(resultFile, "COPYING USING LIBRARY FUNCTIONS\n\n");
                 copyLib(filename1, filename2, recordsNum, recordLen);
+            }
             else
                 perror("invalid type of copying");
+
+            // writing time to result file
+            realTime[1] = times(tmsTime[1]);
+            writeResults(resultFile, timeDifference(realTime[0], realTime[1]),
+                         timeDifference(tmsTime[0]->tms_utime, tmsTime[1]->tms_utime),
+                         timeDifference(tmsTime[0]->tms_stime, tmsTime[1]->tms_stime));
+            fprintf(resultFile, "\n");
+
+            i += 5;
         }
     }
+    fprintf(resultFile, "\n");
 }
 
