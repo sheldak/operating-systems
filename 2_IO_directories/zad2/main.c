@@ -272,7 +272,6 @@ int main(int argc, char **argv) {
             if(statRes == -1)
                 perror("error in root stat");
 
-//            char *fileType = getFileTypeFromPath(getAbsolutePath("."), getNameFromPath(argv[1]));
             char *fileType = getFileTypeFromPath(getDirectoryFromPath(currPath), getNameFromPath(argv[1]));
 
             if(checkTimeOptions(fileStat) == 0)

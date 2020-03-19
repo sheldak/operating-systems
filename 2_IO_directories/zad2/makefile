@@ -18,4 +18,5 @@ tests:
 		./find a/b -mtime 1
 		./find a/c.txt nftw
 		./find a -atime 1
+		./find a nftw
 
