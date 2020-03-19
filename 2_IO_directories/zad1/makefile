@@ -8,7 +8,6 @@ clean:
 		rm tmp*.txt
 
 run:
-		make clean
 		make compile
 
 		./main generate tmp.txt 10000 1 copy tmp.txt tmpSys.txt 10000 1 sys copy tmp.txt tmpLib.txt 10000 1 lib sort tmpSys.txt 10000 1 sys sort tmpLib.txt 10000 1 lib
