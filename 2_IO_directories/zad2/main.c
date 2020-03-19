@@ -92,19 +92,29 @@ int checkName(char *fileName) {
     return 0;
 }
 
-int checkTimeOptions(const struct stat *fileStat) {
-    time_t currTimeDays = time(NULL) / (3600 * 24);
-    time_t mTimeDays = fileStat->st_mtim.tv_sec / (3600 * 24);
-    time_t aTimeDays = fileStat->st_atim.tv_sec / (3600 * 24);
+time_t timeAbs(time_t time) {
+    if (time < 0)
+        return -1*time;
+    else
+        return time;
+}
 
-    if ((findOptions.mTimeSign == 1 && mTimeDays + findOptions.mTime > currTimeDays) ||
-        (findOptions.mTimeSign == -1 && mTimeDays + abs(findOptions.mTime) < currTimeDays) ||
-        (findOptions.mTimeSign == 0 && mTimeDays + findOptions.mTime != currTimeDays))
+int checkTimeOptions(const struct stat *fileStat) {
+    time_t currTime = time(NULL);
+    time_t mTime = fileStat->st_mtim.tv_sec;
+    time_t aTime = fileStat->st_atim.tv_sec;
+
+    time_t mTimeDiff = (currTime - timeAbs(mTime)) / (3600 * 24);
+    time_t aTimeDiff = (currTime - timeAbs(aTime)) / (3600 * 24);
+
+    if ((findOptions.mTimeSign == 1 && mTimeDiff < 1 + findOptions.mTime) ||
+        (findOptions.mTimeSign == -1 && mTimeDiff > 1 + findOptions.mTime) ||
+        (findOptions.mTimeSign == 0 && mTimeDiff != findOptions.mTime))
         return -1;
 
-    if ((findOptions.aTimeSign == 1 && aTimeDays + findOptions.aTime > currTimeDays) ||
-        (findOptions.aTimeSign == -1 && aTimeDays + abs(findOptions.aTime) < currTimeDays) ||
-        (findOptions.aTimeSign == 0 && aTimeDays + findOptions.aTime != currTimeDays))
+    if ((findOptions.aTimeSign == 1 && aTimeDiff < 1 + findOptions.aTime) ||
+        (findOptions.aTimeSign == -1 && aTimeDiff > 1 + findOptions.aTime) ||
+        (findOptions.aTimeSign == 0 && aTimeDiff != findOptions.aTime))
         return -1;
 
     return 0;
@@ -158,6 +168,9 @@ int printFileInfoNftw(const char *fpath, const struct stat *sb, int typeflag, st
 }
 
 char *getFileTypeFromPath(char *dirPath, char *name) {
+    if(strcmp(dirPath, "") == 0)
+        dirPath = "/";
+
     DIR *directory = opendir(dirPath);
     if (!directory)
         perror("invalid directory");
@@ -224,7 +237,7 @@ int main(int argc, char **argv) {
 
             if(argv[i+1][0] == '-')
                 findOptions.mTimeSign = -1;
-            else if(argv[i+1][0] == '-')
+            else if(argv[i+1][0] == '+')
                 findOptions.mTimeSign = 1;
             else
                 findOptions.mTimeSign = 0;
@@ -239,7 +252,7 @@ int main(int argc, char **argv) {
 
             if(argv[i+1][0] == '-')
                 findOptions.aTimeSign = -1;
-            else if(argv[i+1][0] == '-')
+            else if(argv[i+1][0] == '+')
                 findOptions.aTimeSign = 1;
             else
                 findOptions.aTimeSign = 0;
@@ -263,27 +276,25 @@ int main(int argc, char **argv) {
         }
     }
 
-    if (findOptions.maxDepth >= 1) {
-        char *currPath = getAbsolutePath(argv[1]);
+    char *currPath = getAbsolutePath(argv[1]);
 
-        if (useNftw == 0) {
-            struct stat *fileStat = calloc(SIZE, sizeof(struct stat));
-            int statRes = stat(currPath, fileStat);
-            if(statRes == -1)
-                perror("error in root stat");
+    if (useNftw == 0) {
+        struct stat *fileStat = calloc(SIZE, sizeof(struct stat));
+        int statRes = stat(currPath, fileStat);
+        if(statRes == -1)
+            perror("error in root stat");
 
-            char *fileType = getFileTypeFromPath(getDirectoryFromPath(currPath), getNameFromPath(argv[1]));
+        char *fileType = getFileTypeFromPath(getDirectoryFromPath(currPath), getNameFromPath(argv[1]));
 
-            if(checkTimeOptions(fileStat) == 0)
-                printFileInfo(currPath, fileStat, fileType);
-            if(strcmp(fileType, "dir") == 0) {
-                strcat(currPath, "/");
-                find(currPath, 1);
-            }
+        if(checkTimeOptions(fileStat) == 0)
+            printFileInfo(currPath, fileStat, fileType);
+        if(strcmp(fileType, "dir") == 0 && findOptions.maxDepth >= 1) {
+            strcat(currPath, "/");
+            find(currPath, 1);
+        }
 
-        } else
-            nftw(currPath, printFileInfoNftw, SIZE, FTW_PHYS);
-    }
+    } else
+        nftw(currPath, printFileInfoNftw, SIZE, FTW_PHYS);
 
     return 0;
 }
