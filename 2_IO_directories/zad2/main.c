@@ -1,14 +1,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <sys/times.h>
 #include <zconf.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <unistd.h>
 #include <time.h>
 #include <dirent.h>
+#define __USE_XOPEN_EXTENDED 1
+#include <ftw.h>
+
 
 #define SIZE 256
 
@@ -19,6 +20,8 @@ struct options {
     int aTimeSign;
     int maxDepth;
 };
+
+struct options findOptions;
 
 struct options initializeOptions() {
     struct options o;
@@ -44,6 +47,15 @@ char *getFileType(unsigned char type) {
     }
 }
 
+char *getFileTypeNtfw(int type) {
+    switch(type) {
+        case FTW_F: return "file";
+        case FTW_D: return "dir";
+        case FTW_SL: return "slink";
+        default: return "";
+    }
+}
+
 char *timeSecToDate(time_t time) {
     char *date = calloc(SIZE, sizeof(char));
 
@@ -53,40 +65,34 @@ char *timeSecToDate(time_t time) {
     return date;
 }
 
-void printFileInfo(char *absolutePath, struct stat *fileStat, struct dirent *fileEntry) {
-    printf("absolute path:     %s\n", absolutePath);
-    printf("hardlinks:         %lu\n", fileStat->st_nlink);
-    printf("type:              %s\n", getFileType(fileEntry->d_type));
-    printf("size:              %lu\n", fileStat->st_size);
-    printf("last access:       %s\n", timeSecToDate(fileStat->st_atim.tv_sec));
-    printf("last modification: %s\n", timeSecToDate(fileStat->st_mtim.tv_sec));
-    printf("\n");
-}
-
-char *getAbsoluteDirPath(char *dirPath) {
-    if (strlen(dirPath) < 1)
+char *getAbsolutePath(char *path) {
+    if (strlen(path) < 1)
         perror("invalid path");
 
     char *absoluteDirPath = calloc(SIZE, sizeof(char));
 
-    if (dirPath[0] == '/') {
-        strcpy(absoluteDirPath, dirPath);
-        strcat(absoluteDirPath, "/");
+    if (path[0] == '/') {
+        strcpy(absoluteDirPath, path);
     }
     else {
         getcwd(absoluteDirPath, SIZE);
-        strcat(absoluteDirPath, "/");
-        if (dirPath[0] != '.')
-            strcat(absoluteDirPath, dirPath);
+        if (path[0] != '.') {
+            strcat(absoluteDirPath, "/");
+            strcat(absoluteDirPath, path);
+        }
     }
 
     return absoluteDirPath;
 }
-// TODO check if it works
-int checkFile(char *fileName, struct options findOptions, struct stat *fileStat) {
+
+int checkName(char *fileName) {
     if (strcmp(fileName, ".") == 0 || strcmp(fileName, "..") == 0)
         return -1;
 
+    return 0;
+}
+
+int checkTimeOptions(const struct stat *fileStat) {
     time_t currTimeDays = time(NULL) / (3600 * 24);
     time_t mTimeDays = fileStat->st_mtim.tv_sec / (3600 * 24);
     time_t aTimeDays = fileStat->st_atim.tv_sec / (3600 * 24);
@@ -104,13 +110,73 @@ int checkFile(char *fileName, struct options findOptions, struct stat *fileStat)
     return 0;
 }
 
-void find(char *dirPath, struct options findOptions, int depth) {
+void printFileInfo(const char *absolutePath, const struct stat *fileStat, char *type) {
+    printf("absolute path:     %s\n", absolutePath);
+    printf("hardlinks:         %lu\n", fileStat->st_nlink);
+    printf("type:              %s\n", type);
+    printf("size:              %lu\n", fileStat->st_size);
+    printf("last access:       %s\n", timeSecToDate(fileStat->st_atim.tv_sec));
+    printf("last modification: %s\n", timeSecToDate(fileStat->st_mtim.tv_sec));
+    printf("\n");
+}
+
+char *getDirectoryFromPath(const char *path) {
+    int lastSlash = -1;
+    for(int i=0; i<strlen(path); i++) {
+        if(path[i] == '/')
+            lastSlash = i;
+    }
+
+    char *directory = calloc(SIZE, sizeof(char));
+
+    for(int i=0; i<lastSlash; i++)
+        directory[i] = path[i];
+
+    return directory;
+}
+
+char *getNameFromPath(const char *path) {
+    int lastSlash = -1;
+    for(int i=0; i<strlen(path); i++) {
+        if(path[i] == '/')
+            lastSlash = i;
+    }
+
+    char *name = calloc(SIZE, sizeof(char));
+
+    for(int i=lastSlash+1; i<strlen(path); i++)
+        name[i - lastSlash - 1] = path[i];
+
+    return name;
+}
+
+int printFileInfoNftw(const char *fpath, const struct stat *sb, int typeflag, struct FTW *ftwbuf) {
+    if(checkName(getNameFromPath(fpath)) == 0 && checkTimeOptions(sb) == 0 && ftwbuf->level <= findOptions.maxDepth)
+        printFileInfo(fpath, sb, getFileTypeNtfw(typeflag));
+
+    return 0;
+}
+
+char *getFileTypeFromPath(char *dirPath, char *name) {
     DIR *directory = opendir(dirPath);
     if (!directory)
         perror("invalid directory");
 
     struct dirent *currEntry = readdir(directory);
-    struct stat *statBuffer = calloc(SIZE, sizeof(char));
+
+    while(strcmp(currEntry->d_name, name) != 0)
+        currEntry = readdir(directory);
+
+    return getFileType(currEntry->d_type);
+}
+
+void find(char *dirPath, int depth) {
+    DIR *directory = opendir(dirPath);
+    if (!directory)
+        perror("invalid directory");
+
+    struct dirent *currEntry = readdir(directory);
+    struct stat *statBuffer = calloc(SIZE, sizeof(struct stat));
 
     while(currEntry) {
         char *fileName = currEntry->d_name;
@@ -120,17 +186,18 @@ void find(char *dirPath, struct options findOptions, int depth) {
         strcat(absolutePath, fileName);
 
         int statRes = stat(absolutePath, statBuffer);
-        if(statRes == -1)
+        if(statRes == -1 && errno != ENOENT)
             perror("error in stat");
 
-        if(checkFile(fileName, findOptions, statBuffer) == 0) {
-            printFileInfo(absolutePath, statBuffer, currEntry);
+        if(checkName(fileName) == 0) {
+            if(checkTimeOptions(statBuffer) == 0)
+                printFileInfo(absolutePath, statBuffer, getFileType(currEntry->d_type));
 
             if (strcmp(getFileType(currEntry->d_type), "dir") == 0 && findOptions.maxDepth > depth) {
                 char *newPath = calloc(SIZE, sizeof(char));
                 strcpy(newPath, absolutePath);
                 strcat(newPath, "/");
-                find(newPath, findOptions, depth+1);
+                find(newPath, depth + 1);
             }
         }
 
@@ -145,9 +212,10 @@ int main(int argc, char **argv) {
     if(argc < 2)
         perror("too few arguments");
 
-    char *commands[3] = {"-mtime", "-atime", "-maxdepth"};
+    char *commands[4] = {"-mtime", "-atime", "-maxdepth", "nftw"};
 
-    struct options findOptions = initializeOptions();
+    findOptions = initializeOptions();
+    int useNftw = 0;
 
     for (int i=2; i<argc; i++) {
         if (strcmp(argv[i], commands[0]) == 0) {
@@ -188,20 +256,34 @@ int main(int argc, char **argv) {
             findOptions.maxDepth = (int) strtol(argv[i+1], &rest, 10);
 
             i += 1;
+        } else if (strcmp(argv[i], commands[3]) == 0 && i == argc-1){
+            useNftw = 1;
         } else {
-            perror("invalid arguments");
+                perror("invalid arguments");
         }
     }
 
-//    printf("%d\n", findOptions.mTime);
-//    printf("%d\n", findOptions.mTimeSign);
-//    printf("%d\n", findOptions.aTime);
-//    printf("%d\n", findOptions.aTimeSign);
-//    printf("%d\n", findOptions.maxDepth);
-
     if (findOptions.maxDepth >= 1) {
-        char *dirPath = getAbsoluteDirPath(argv[1]);
-        find(dirPath, findOptions, 1);
+        char *currPath = getAbsolutePath(argv[1]);
+
+        if (useNftw == 0) {
+            struct stat *fileStat = calloc(SIZE, sizeof(struct stat));
+            int statRes = stat(currPath, fileStat);
+            if(statRes == -1)
+                perror("error in root stat");
+
+//            char *fileType = getFileTypeFromPath(getAbsolutePath("."), getNameFromPath(argv[1]));
+            char *fileType = getFileTypeFromPath(getDirectoryFromPath(currPath), getNameFromPath(argv[1]));
+
+            if(checkTimeOptions(fileStat) == 0)
+                printFileInfo(currPath, fileStat, fileType);
+            if(strcmp(fileType, "dir") == 0) {
+                strcat(currPath, "/");
+                find(currPath, 1);
+            }
+
+        } else
+            nftw(currPath, printFileInfoNftw, SIZE, FTW_PHYS);
     }
 
     return 0;

@@ -1,4 +1,4 @@
-CC = gcc -Wall -std=c11 -D_DEFAULT_SOURCE
+CC = gcc -Wall -std=c11 -D_DEFAULT_SOURCE -D_GNU_SOURCE
 
 compile:
 		$(CC) -o find main.c
@@ -7,12 +7,15 @@ clean:
 		rm find
 
 tests:
-# 		make clean
 		make compile
 
-# 		./find .
-# 		./find a/
-		./find . -mtime 0 -atime 0 -maxdepth 3
-# 		./find . -maxdepth 3
-# 		./find a -mtime +20 -atime 30
+		./find . -mtime +2 -atime -1 -maxdepth 3
+		./find . -mtime +2 -atime -1 -maxdepth 3 nftw
+		./find a -maxdepth 0
+		./find a -maxdepth 0 nftw
+		./find a -maxdepth 1
+		./find a -maxdepth 1 nftw
+		./find a/b -mtime 1
+		./find a/c.txt nftw
+		./find a -atime 1
 
