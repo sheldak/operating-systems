@@ -58,6 +58,8 @@ CMakeLists.txt
 
 # Unnecessary project files
 *.txt
+tmp*.csv
 main
 
 !wyniki.txt
+!list.txt
