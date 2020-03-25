@@ -541,7 +541,6 @@ void writeMatrixBlockToFileCommon(char *fileName, struct matrix m, int rBlockInd
 
     struct matrixSpecs mSpecs = getMatrixSpecifications(tmpFileDesc);
     mSpecs.blocksOfColumns[rBlockIndex]++;
-    printf("\n\n%d\n\n",mSpecs.blocks);
 
     // getting matrix from output file (made by other processes or other iterations of multiplication)
     int fileDesc = open(filePath, O_RDWR);
@@ -577,7 +576,7 @@ void writeMatrixBlockToFileCommon(char *fileName, struct matrix m, int rBlockInd
 
 }
 
-int makeMultiplication(char *listName, int resultsSaving) {
+int makeMultiplication(char *listName, int resultsSaving, int *multiplications) {
     // reading list file
     char *tmpListPath = getTmpListPath(listName);
 
@@ -665,9 +664,10 @@ int makeMultiplication(char *listName, int resultsSaving) {
 
                 struct matrix resultMatrix = multiply(matrixA, matrixB, rowsAToMultiply, blockAIndex);
 
-                if(resultsSaving == COMMON) {
+                if(resultsSaving == COMMON)
                     writeMatrixBlockToFileCommon(outputFileName, resultMatrix, blockAIndex, blockBIndex);
-                }
+
+                *multiplications += 1;
 
 //                for(int k=0; k<matrixA.rows; k++) {
 //                    for(int j=0; j<matrixA.columns; j++)
@@ -804,7 +804,26 @@ int main(int argc, char **argv) {
 
     close(fileDesc);
 
-    while(makeMultiplication(argv[1], resultsSaving) != -1);
+    int multiplications = 0;
+
+    int myPID = -1;
+    for(int i=0; i<processesNum && myPID != 0; i++)
+        myPID = fork();
+
+    if(myPID == 0)
+        while(makeMultiplication(argv[1], resultsSaving, &multiplications) != -1){}
+    else {
+        for(int i=0; i<processesNum; i++) {
+            int status;
+            pid_t curr_pid = wait(&status);
+
+            if(WIFEXITED(status)) {
+                int processMultiplications = WEXITSTATUS(status);
+                printf("Process %d has made %d multiplications\n", curr_pid, processMultiplications);
+            }
+        }
+    }
+
 
 
 //    FILE *file = fopen("a.txt", "r+");
@@ -844,5 +863,5 @@ int main(int argc, char **argv) {
 //        flock(fileDesc, LOCK_UN);
 //    }
 
-    return 0;
+    return multiplications;
 }

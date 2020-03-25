@@ -8,6 +8,7 @@ clean:
 
 run:
 		make compile
+		rm matrices/tmp*
 
 		./matrix list.txt 2 3 common
 # 		./matrix list.txt 2 3 separate

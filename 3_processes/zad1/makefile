@@ -7,8 +7,8 @@ clean:
 		rm main
 
 run:
-		rm matrices/tmp*
 		make compile
 
 		./main .
 		./main a
+
