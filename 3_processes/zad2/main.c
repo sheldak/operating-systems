@@ -519,11 +519,9 @@ void writeOutputMatrixToFile(int fileDesc, struct matrix m, struct matrixSpecs m
 void updateTmpOutputFile(int fileDesc, struct matrixSpecs mSpecs) {
     lseek(fileDesc, 0, SEEK_SET);
 
-
     for(int i=0; i<mSpecs.blocks; i++) {
         char *line = calloc(SIZE, sizeof(char));
         sprintf(line, "%d\n", mSpecs.blocksOfColumns[i]);
-        printf("%d\n", mSpecs.blocks);
 
         write(fileDesc, line, 1 + getNumSize(mSpecs.blocksOfColumns[i]));
     }
@@ -566,12 +564,12 @@ void writeMatrixBlockToFileCommon(char *fileName, struct matrix m, int rBlockInd
     close(fileDesc);
     close(tmpFileDesc);
 
-    for(int i=0; i<matrixC.rows; i++) {
-        for(int j=0; j<matrixC.columns; j++)
-            printf("%d ", matrixC.table[i][j]);
-        printf("\n");
-    }
-    printf("\n");
+//    for(int i=0; i<matrixC.rows; i++) {
+//        for(int j=0; j<matrixC.columns; j++)
+//            printf("%d ", matrixC.table[i][j]);
+//        printf("\n");
+//    }
+//    printf("\n");
 
 
     if(!mSpecs.blocksOfColumns)
@@ -671,25 +669,25 @@ int makeMultiplication(char *listName, int resultsSaving) {
                     writeMatrixBlockToFileCommon(outputFileName, resultMatrix, blockAIndex, blockBIndex);
                 }
 
-                for(int k=0; k<matrixA.rows; k++) {
-                    for(int j=0; j<matrixA.columns; j++)
-                        printf("%d ", matrixA.table[k][j]);
-                    printf("\n");
-                }
-                printf("\n");
-
-                for(int k=0; k<matrixB.rows; k++) {
-                    for(int j=0; j<matrixB.columns; j++)
-                        printf("%d ", matrixB.table[k][j]);
-                    printf("\n");
-                }
-                printf("\n");
-
-                for(int k=0; k<rowsAToMultiply; k++) {
-                    for(int j=0; j<matrixB.columns; j++)
-                        printf("%d ", resultMatrix.table[k][j]);
-                    printf("\n");
-                }
+//                for(int k=0; k<matrixA.rows; k++) {
+//                    for(int j=0; j<matrixA.columns; j++)
+//                        printf("%d ", matrixA.table[k][j]);
+//                    printf("\n");
+//                }
+//                printf("\n");
+//
+//                for(int k=0; k<matrixB.rows; k++) {
+//                    for(int j=0; j<matrixB.columns; j++)
+//                        printf("%d ", matrixB.table[k][j]);
+//                    printf("\n");
+//                }
+//                printf("\n");
+//
+//                for(int k=0; k<rowsAToMultiply; k++) {
+//                    for(int j=0; j<matrixB.columns; j++)
+//                        printf("%d ", resultMatrix.table[k][j]);
+//                    printf("\n");
+//                }
             }
 
 
@@ -754,9 +752,11 @@ int main(int argc, char **argv) {
         char *inputFileName2 = calloc(SIZE, sizeof(char));
         char *outputFileName = calloc(SIZE, sizeof(char));
 
+        // getting line from list file
         getLineFromList(fileDesc, currLine+1, inputFileName1, inputFileName2, outputFileName);
         lseek(fileDesc, 0, SEEK_SET);
 
+        // creating a copy of matrix A file
         char *inputFilePath1 = calloc(SIZE, sizeof(char));
         strcpy(inputFilePath1, matricesDir);
         strcat(inputFilePath1, inputFileName1);
@@ -764,6 +764,7 @@ int main(int argc, char **argv) {
         char *tmpInputFilePath1 = getTmpMatrixPath(inputFileName1);
         copyFile(inputFilePath1, tmpInputFilePath1);
 
+        // creating a copy of matrix B file
         char *inputFilePath2 = calloc(SIZE, sizeof(char));
         strcpy(inputFilePath2, matricesDir);
         strcat(inputFilePath2, inputFileName2);
@@ -771,12 +772,23 @@ int main(int argc, char **argv) {
         char *tmpInputFilePath2 = getTmpMatrixPath(inputFileName2);
         copyFile(inputFilePath2, tmpInputFilePath2);
 
+        // creating a temporary output file which will be using during multiplication
         char *tmpOutputFilePath = getTmpMatrixPath(outputFileName);
         char *command = calloc(SIZE, sizeof(char));
         strcpy(command, "touch ");
         strcat(command, tmpOutputFilePath);
         system(command);
 
+        // preparing output file
+        char *outputFilePath = calloc(SIZE, sizeof(char));
+        strcpy(outputFilePath, matricesDir);
+        strcat(outputFilePath, outputFileName);
+        char *lineToOutputFile = "0 0\n";
+        FILE *matrixCFile = fopen(outputFilePath, "w");
+        fwrite(lineToOutputFile, 4, sizeof(char), matrixCFile);
+        fclose(matrixCFile);
+
+        // preparing temporary output file
         int matrixAFileDesc = open(inputFilePath1, O_RDONLY);
         int rows, columns;
         getFirstLineFromMatrix(matrixAFileDesc, &rows, &columns);
@@ -792,7 +804,7 @@ int main(int argc, char **argv) {
 
     close(fileDesc);
 
-    makeMultiplication(argv[1], resultsSaving);
+    while(makeMultiplication(argv[1], resultsSaving) != -1);
 
 
 //    FILE *file = fopen("a.txt", "r+");
