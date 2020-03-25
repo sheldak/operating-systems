@@ -18,6 +18,17 @@ const char *listsDir = "lists/";
 const char *matricesDir = "matrices/";
 const int blockSize = 5;
 
+struct matrix {
+    int rows;
+    int columns;
+    int **table;
+};
+
+struct matrixSpecs {
+    int blocks;
+    int *blocksOfColumns;
+};
+
 char *getTmpListPath(char *listName) {
     char *tmpListPath = calloc(SIZE, sizeof(char));
     strcpy(tmpListPath, listsDir);
@@ -128,7 +139,7 @@ void getLineFromList(int fileDesc, int index, char *inNameA, char *inNameB, char
     }
 }
 
-void getFirstLineFromMatrixA(int fileDesc, int *rows, int *columns) {
+void getFirstLineFromMatrix(int fileDesc, int *rows, int *columns) {
     *rows = 0;
     *columns = 0;
 
@@ -199,16 +210,21 @@ void getFirstLineFromMatrixB(int fileDesc, int *rows, int *columns, int *startCo
     }
 }
 
-int **getMatrixA(int fileDesc, int *rows, int *columns) {
-    getFirstLineFromMatrixA(fileDesc, rows, columns);
+struct matrix getMatrixA(int fileDesc) {
+    int rows, columns;
+    getFirstLineFromMatrix(fileDesc, &rows, &columns);
+
+    struct matrix m;
+    m.rows = rows;
+    m.columns = columns;
 
     // matrix initialization
-    int **matrix = calloc(*rows, sizeof(int*));
-    for(int i=0; i<*rows; i++)
-        matrix[i] = calloc(*columns, sizeof(int));
+    m.table = calloc(rows, sizeof(int*));
+    for(int i=0; i<rows; i++)
+        m.table[i] = calloc(columns, sizeof(int));
 
     // transcribe from file to matrix of integers
-    for(int row=0; row<*rows; row++) {
+    for(int row=0; row<rows; row++) {
         int column = 0;
 
         int currValue = 0;
@@ -217,9 +233,9 @@ int **getMatrixA(int fileDesc, int *rows, int *columns) {
         int currDigit;
 
         read(fileDesc, currChar, 1);
-        while(column < *columns) {
+        while(column < columns) {
             if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
-                matrix[row][column] = currValue;
+                m.table[row][column] = currValue;
                 currValue = 0;
 
                 column++;
@@ -241,15 +257,17 @@ int **getMatrixA(int fileDesc, int *rows, int *columns) {
         }
     }
 
-    return matrix;
+    return m;
 }
 
-int **getMatrixBBlock(int fileDesc, int *blockRows, int *blockColumns, int *endOfMatrix) {
+struct matrix getMatrixBBlock(int fileDesc, int *blockIndex, int *endOfMatrix) {
     int rows, columns, startColumn;
     getFirstLineFromMatrixB(fileDesc, &rows, &columns, &startColumn);
 
+    struct matrix m;
+
     if(startColumn == columns) // this matrix was all read
-        return NULL;
+        m.table = NULL;
     else {
         // number of columns to take
         int columnsTaken;
@@ -262,10 +280,13 @@ int **getMatrixBBlock(int fileDesc, int *blockRows, int *blockColumns, int *endO
             *endOfMatrix = 1;
         }
 
+        // index of current block
+        *blockIndex = startColumn / blockSize;
+
         // matrix initialization
-        int **matrix = calloc(rows, sizeof(int*));
+        m.table = calloc(rows, sizeof(int*));
         for(int i=0; i<rows; i++)
-            matrix[i] = calloc(columnsTaken, sizeof(int));
+            m.table[i] = calloc(columnsTaken, sizeof(int));
 
         // transcribe 'columnsTaken' columns from file to matrix
         for(int row=0; row<rows; row++) {
@@ -280,7 +301,7 @@ int **getMatrixBBlock(int fileDesc, int *blockRows, int *blockColumns, int *endO
             while(column < columns) {
                 if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
                     if(column >= startColumn && column < startColumn + columnsTaken) {
-                        matrix[row][column-startColumn] = currValue;
+                        m.table[row][column-startColumn] = currValue;
                         currValue = 0;
                     }
                     column++;
@@ -331,14 +352,234 @@ int **getMatrixBBlock(int fileDesc, int *blockRows, int *blockColumns, int *endO
         write(fileDesc, newStartColumn, 3);
 
         // matrix values and size
-        *blockRows = rows;
-        *blockColumns = columnsTaken;
+        m.rows = rows;
+        m.columns = columnsTaken;
+    }
 
-        return matrix;
+    return m;
+}
+
+struct matrix multiply(struct matrix mA, struct matrix mB, int aBlockRows, int blockIndex) {
+    struct matrix m;
+    m.table = calloc(aBlockRows, sizeof(int*));
+    for(int i=0; i<aBlockRows; i++)
+        m.table[i] = calloc(mB.columns, sizeof(int));
+
+    for(int i = blockIndex*blockSize; i < blockIndex*blockSize + aBlockRows; i++) {
+        for(int j=0; j<mB.columns; j++) {
+            int sum = 0;
+            for(int k=0; k<mA.columns; k++)
+                sum += mA.table[i][k] * mB.table[k][j];
+            m.table[i - blockIndex*blockSize][j] = sum;
+        }
+    }
+
+    m.rows = aBlockRows;
+    m.columns = mB.columns;
+
+    return m;
+}
+
+struct matrixSpecs getMatrixSpecifications(int fileDesc) {
+    struct matrixSpecs mSpecs;
+
+    mSpecs.blocks = 0;
+
+    int currNum = 0;
+    int *tmpTable = calloc(SIZE, sizeof(int));
+    int currDigit = 0;
+    char *rest = calloc(1, sizeof(char));
+
+    char *currChar = calloc(1, sizeof(char));
+    while(read(fileDesc, currChar, 1) != 0) {
+        if(strcmp(currChar, "\n") == 0) {
+            tmpTable[mSpecs.blocks++] = currNum;
+            currNum = 0;
+        }
+        else {
+            currDigit = (int) strtol(currChar, &rest, 10);
+            if(strcmp(rest, "") != 0)
+                perror("invalid matrix file, there should be just numbers");
+
+            currNum *= 10;
+            currNum += currDigit;
+        }
+    }
+    if(mSpecs.blocks == 0 && currNum == 0)
+        perror("tmp_out file is built improperly");
+
+    mSpecs.blocksOfColumns = calloc(mSpecs.blocks, sizeof(int));
+    for(int i=0; i<mSpecs.blocks; i++)
+        mSpecs.blocksOfColumns[i] = tmpTable[i];
+
+    free(tmpTable);
+
+    return mSpecs;
+}
+
+struct matrix getMatrixFromOutputFile(int fileDesc, struct matrix mBlock, int rBlockIndex, int cBlockIndex) {
+    int rows, columns;
+    getFirstLineFromMatrix(fileDesc, &rows, &columns);
+
+    struct matrix outputM;
+    outputM.rows = rows;
+    if(mBlock.rows + rBlockIndex*blockSize > rows)
+        outputM.rows = mBlock.rows + rBlockIndex*blockSize;
+
+    outputM.columns = columns;
+    if(mBlock.columns + cBlockIndex*blockSize > columns)
+        outputM.columns = mBlock.columns + cBlockIndex*blockSize;
+
+    outputM.table = calloc(outputM.rows, sizeof(int*));
+    for(int i=0; i<outputM.rows; i++)
+        outputM.table[i] = calloc(outputM.columns, sizeof(int));
+
+    int currNum = 0;
+    int currDigit = 0;
+    int currRow = 0;
+    int currColumn = 0;
+    char *rest = calloc(1, sizeof(char));
+
+    char *currChar = calloc(1, sizeof(char));
+    while(currRow < rows) {
+        if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
+            outputM.table[currRow][currColumn] = currNum;
+            currNum = 0;
+
+            if(strcmp(currChar, " ") == 0)
+                currColumn++;
+            else {
+                currColumn = 0;
+                currRow++;
+            }
+        }
+        else {
+            currDigit = (int) strtol(currChar, &rest, 10);
+            if(strcmp(rest, "") != 0)
+                perror("invalid matrix file, there should be just numbers");
+
+            currNum *= 10;
+            currNum += currDigit;
+        }
+
+        if(read(fileDesc, currChar, 1) == 0)
+            currChar = "\n";
+    }
+
+    return outputM;
+}
+
+void updateMatrix(struct matrix m, struct matrix mBlock, int rBlockIndex, int cBlockIndex) {
+    for(int i=0; i<mBlock.rows; i++) {
+        for(int j=0; j<mBlock.columns; j++)
+            m.table[rBlockIndex*blockSize + i][cBlockIndex*blockSize + j] = mBlock.table[i][j];
     }
 }
 
-int makeMultiplication(char *listName) {
+int getNumSize(int num) {
+    int size = 1;
+    while(num / 10 > 0){
+        size++;
+        num /= 10;
+    }
+
+    return size;
+}
+
+int min(int a, int b) {
+    if(a < b)
+        return a;
+    else
+        return b;
+}
+
+void writeOutputMatrixToFile(int fileDesc, struct matrix m, struct matrixSpecs mSpecs) {
+    lseek(fileDesc, 0, SEEK_SET);
+
+    char *matrixLine = calloc(SIZE, sizeof(char));
+
+    int size = 2 + getNumSize(m.rows) + getNumSize(m.columns);
+    sprintf(matrixLine, "%d %d\n", m.rows, m.columns);
+
+    write(fileDesc, matrixLine, size);
+    char *num = calloc(SIZE, sizeof(char));
+    for(int i=0; i<m.rows; i++) {
+        memset(matrixLine, 0, SIZE);
+        size = 0;
+        for(int j=0; j<min(mSpecs.blocksOfColumns[i/blockSize]*blockSize, m.columns); j++) {
+            sprintf(num, "%d ", m.table[i][j]);
+            strcat(matrixLine, num);
+            size += getNumSize(m.table[i][j])+1;
+        }
+        matrixLine[size-1] = '\n';
+        write(fileDesc, matrixLine, size);
+    }
+}
+
+void updateTmpOutputFile(int fileDesc, struct matrixSpecs mSpecs) {
+    lseek(fileDesc, 0, SEEK_SET);
+
+
+    for(int i=0; i<mSpecs.blocks; i++) {
+        char *line = calloc(SIZE, sizeof(char));
+        sprintf(line, "%d\n", mSpecs.blocksOfColumns[i]);
+        printf("%d\n", mSpecs.blocks);
+
+        write(fileDesc, line, 1 + getNumSize(mSpecs.blocksOfColumns[i]));
+    }
+}
+
+void writeMatrixBlockToFileCommon(char *fileName, struct matrix m, int rBlockIndex, int cBlockIndex) {
+    // files paths
+    char *filePath = calloc(SIZE, sizeof(char));
+    strcpy(filePath, matricesDir);
+    strcat(filePath, fileName);
+
+    char *tmpFilePath = getTmpMatrixPath(fileName);
+
+    // getting data (containing information where to put new matrix block) from tmp file
+    int tmpFileDesc = open(tmpFilePath, O_RDWR);
+    while(flock(tmpFileDesc, LOCK_EX | LOCK_NB) == -1) {}
+
+    struct matrixSpecs mSpecs = getMatrixSpecifications(tmpFileDesc);
+    mSpecs.blocksOfColumns[rBlockIndex]++;
+    printf("\n\n%d\n\n",mSpecs.blocks);
+
+    // getting matrix from output file (made by other processes or other iterations of multiplication)
+    int fileDesc = open(filePath, O_RDWR);
+    while(flock(fileDesc, LOCK_EX | LOCK_NB) == -1) {}
+
+    struct matrix matrixC = getMatrixFromOutputFile(fileDesc, m, rBlockIndex, cBlockIndex);
+
+    // updating matrix from output file by adding a new block of multiplications (matrix m)
+    updateMatrix(matrixC, m, rBlockIndex, cBlockIndex);
+
+    // writing matrix to file
+    writeOutputMatrixToFile(fileDesc, matrixC, mSpecs);
+
+    // updating temporary output file
+    updateTmpOutputFile(tmpFileDesc, mSpecs);
+
+    // unlocking files
+    flock(fileDesc, LOCK_UN);
+    flock(tmpFileDesc, LOCK_UN);
+    close(fileDesc);
+    close(tmpFileDesc);
+
+    for(int i=0; i<matrixC.rows; i++) {
+        for(int j=0; j<matrixC.columns; j++)
+            printf("%d ", matrixC.table[i][j]);
+        printf("\n");
+    }
+    printf("\n");
+
+
+    if(!mSpecs.blocksOfColumns)
+        printf("S\n");
+
+}
+
+int makeMultiplication(char *listName, int resultsSaving) {
     // reading list file
     char *tmpListPath = getTmpListPath(listName);
 
@@ -368,8 +609,8 @@ int makeMultiplication(char *listName) {
         int matrixBFileDesc = open(tmpMatrixBPath, O_RDWR);
         while(flock(matrixBFileDesc, LOCK_EX | LOCK_NB) == -1) {}
 
-        int matrixBRows, matrixBColumns, endOfMatrix;
-        int **matrixB = getMatrixBBlock(matrixBFileDesc, &matrixBRows, &matrixBColumns, &endOfMatrix);
+        int blockBIndex, endOfMatrix;
+        struct matrix matrixB = getMatrixBBlock(matrixBFileDesc, &blockBIndex, &endOfMatrix);
 
         flock(matrixBFileDesc, LOCK_UN);
         close(matrixBFileDesc);
@@ -401,29 +642,57 @@ int makeMultiplication(char *listName) {
         flock(listFileDesc, LOCK_UN);
         close(listFileDesc);
 
-        if(!matrixB)
+        if(!matrixB.table)
             perror("previous process has not written the fact of the end of matrix file to list file");
         else {
             // getting matrix A
             int matrixAFileDesc = open(tmpMatrixAPath, O_RDONLY);
 
-            int matrixARows, matrixAColumns;
-            int **matrixA = getMatrixA(matrixAFileDesc, &matrixARows, &matrixAColumns);
+            struct matrix matrixA = getMatrixA(matrixAFileDesc);
 
             close(matrixAFileDesc);
 
-            for(int i=0; i<matrixARows; i++) {
-                for(int j=0; j<matrixAColumns; j++)
-                    printf("%d ", matrixA[i][j]);
-                printf("\n");
-            }
-            printf("\n");
+            if(matrixA.columns != matrixB.rows)
+                perror("invalid size of matrices, cannot multiply them");
 
-            for(int i=0; i<matrixBRows; i++) {
-                for(int j=0; j<matrixBColumns; j++)
-                    printf("%d ", matrixB[i][j]);
+            int blocksOfMultiplication = matrixA.rows / blockSize + 1;
+
+            if(matrixA.rows % blockSize == 0)
+                blocksOfMultiplication--;
+
+            for(int blockAIndex=0; blockAIndex<blocksOfMultiplication; blockAIndex++) {
+                int rowsAToMultiply = blockSize;
+                if(blockAIndex == blocksOfMultiplication - 1)
+                    rowsAToMultiply = (matrixA.rows-1) % blockSize + 1;
+
+                struct matrix resultMatrix = multiply(matrixA, matrixB, rowsAToMultiply, blockAIndex);
+
+                if(resultsSaving == COMMON) {
+                    writeMatrixBlockToFileCommon(outputFileName, resultMatrix, blockAIndex, blockBIndex);
+                }
+
+                for(int k=0; k<matrixA.rows; k++) {
+                    for(int j=0; j<matrixA.columns; j++)
+                        printf("%d ", matrixA.table[k][j]);
+                    printf("\n");
+                }
                 printf("\n");
+
+                for(int k=0; k<matrixB.rows; k++) {
+                    for(int j=0; j<matrixB.columns; j++)
+                        printf("%d ", matrixB.table[k][j]);
+                    printf("\n");
+                }
+                printf("\n");
+
+                for(int k=0; k<rowsAToMultiply; k++) {
+                    for(int j=0; j<matrixB.columns; j++)
+                        printf("%d ", resultMatrix.table[k][j]);
+                    printf("\n");
+                }
             }
+
+
 
         }
 
@@ -446,6 +715,29 @@ int main(int argc, char **argv) {
 
     char *tmpListPath = getTmpListPath(argv[1]);
     copyFile(listPath, tmpListPath);
+
+    // second argument, number of processes
+    char *rest;
+    int processesNum = (int) strtol(argv[2], &rest ,10);
+
+    if(strcmp(rest, "") != 0)
+        perror("invalid second argument");
+
+    // third argument, max time for multiplication
+    rest = "";
+    int maxTime = (int) strtol(argv[3], &rest ,10);
+
+    if(strcmp(rest, "") != 0)
+        perror("invalid third argument");
+
+    // forth argument, results of multiplication are in COMMON file, or in SEPARATE files
+    int resultsSaving = -1;
+    if(strcmp(argv[4], "common") == 0)
+        resultsSaving = COMMON;
+    else if(strcmp(argv[4], "separate") == 0)
+        resultsSaving = SEPARATE;
+    else
+        perror("invalid forth argument");
 
     // copying matrices files to tmp files
     int fileDesc = open(listPath, O_RDONLY);
@@ -479,39 +771,39 @@ int main(int argc, char **argv) {
         char *tmpInputFilePath2 = getTmpMatrixPath(inputFileName2);
         copyFile(inputFilePath2, tmpInputFilePath2);
 
+        char *tmpOutputFilePath = getTmpMatrixPath(outputFileName);
+        char *command = calloc(SIZE, sizeof(char));
+        strcpy(command, "touch ");
+        strcat(command, tmpOutputFilePath);
+        system(command);
+
+        int matrixAFileDesc = open(inputFilePath1, O_RDONLY);
+        int rows, columns;
+        getFirstLineFromMatrix(matrixAFileDesc, &rows, &columns);
+        close(matrixAFileDesc);
+
+        int matrixCTmpFileDesc = open(tmpOutputFilePath, O_WRONLY);
+        for(int i=0; i<rows/blockSize + 1; i++)
+            write(matrixCTmpFileDesc, "0\n", 2);
+        close(matrixCTmpFileDesc);
+
         currLine++;
     }
 
     close(fileDesc);
 
+    makeMultiplication(argv[1], resultsSaving);
 
 
-    makeMultiplication(argv[1]);
+//    FILE *file = fopen("a.txt", "r+");
+//    fwrite("we", 2, sizeof(char), file);
+//    fclose(file);
+//
+//    file = fopen("a.txt", "r+");
+//    fseek(file, 1, SEEK_SET);
+//    fwrite("2003", 4, sizeof(char), file);
+//    fclose(file);
 
-
-
-    // second argument, number of processes
-    char *rest;
-    int processesNum = (int) strtol(argv[2], &rest ,10);
-
-    if(strcmp(rest, "") != 0)
-        perror("invalid second argument");
-
-    // third argument, max time for multiplication
-    rest = "";
-    int maxTime = (int) strtol(argv[3], &rest ,10);
-
-    if(strcmp(rest, "") != 0)
-        perror("invalid third argument");
-
-    // forth argument, results of multiplication are in COMMON file, or in SEPARATE files
-    int resultsSaving;
-    if(strcmp(argv[4], "common") == 0)
-        resultsSaving = COMMON;
-    else if(strcmp(argv[4], "separate") == 0)
-        resultsSaving = SEPARATE;
-    else
-        perror("invalid forth argument");
 
 //    pid_t pid1 = fork();
 //    pid_t pid2 = -1;
