@@ -4,7 +4,7 @@
 #include <time.h>
 
 #define SIZE 256
-#define MATRIX_MIN 0
+#define MATRIX_MIN -100
 #define MATRIX_MAX 100
 
 struct matrix {
@@ -69,13 +69,6 @@ void writeMatrixToFile(char *filePath, struct matrix m, int isB) {
     fclose(file);
 }
 
-void writeEmptyMatrixToFile(char *filePath) {
-    char *line = "0 0\n";
-    FILE *file = fopen(filePath, "w");
-    fwrite(line, 4, sizeof(char), file);
-    fclose(file);
-}
-
 void generateMatrices(int n, int min, int max, char **filePathsA, char **filePathsB, char **filePathsC) {
     for(int i=0; i<n; i++) {
         struct matrix mA;
@@ -106,8 +99,6 @@ void generateMatrices(int n, int min, int max, char **filePathsA, char **filePat
 
         writeMatrixToFile(filePathsA[i], mA, -1);
         writeMatrixToFile(filePathsB[i], mB, 0);
-
-//        writeEmptyMatrixToFile(filePathsC[i]);
 
         freeMatrix(mA);
         freeMatrix(mB);

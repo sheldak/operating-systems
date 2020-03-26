@@ -27,7 +27,7 @@ run:
 		./test in11.csv in12.csv out6.csv
 
 # 		./generator 5 35 35
-# 		./matrix list.txt 30 1 separate 15 100
+# 		./matrix list.txt 30 5 separate 15 100
 # 		./test in1.csv in2.csv out1.csv
 # 		./test in3.csv in4.csv out2.csv
 # 		./test in5.csv in6.csv out3.csv

@@ -261,6 +261,15 @@ int main(int argc, char **argv) {
 
             system(command);
         }
+        else {
+            char *command = calloc(SIZE, sizeof(char));
+            strcpy(command, "cat ");
+            strcat(command, getTmpSeparateFile(outputFileName, 0));
+            strcat(command, " >> ");
+            strcat(command, outputFilePath);
+
+            system(command);
+        }
         currLine++;
     }
 

@@ -68,9 +68,11 @@ struct matrix getMatrix(int fileDesc) {
         int currDigit;
 
         read(fileDesc, currChar, 1);
+        int sign = 1;
         while(column < columns) {
             if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
-                m.table[row][column] = currValue;
+                m.table[row][column] = currValue * sign;
+                sign = 1;
                 currValue = 0;
 
                 column++;
@@ -80,8 +82,12 @@ struct matrix getMatrix(int fileDesc) {
             }
             else {
                 currDigit = (int) strtol(currChar, &rest, 10);
-                if(strcmp(rest, "") != 0)
-                    perror("invalid matrix file, there should be just numbers");
+                if(strcmp(rest, "") != 0) {
+                    if (strcmp(rest, "-") == 0)
+                        sign = -1;
+                    else
+                        perror("invalid matrix file, there should be just numbers");
+                }
 
                 currValue *= 10;
                 currValue += currDigit;
@@ -119,11 +125,8 @@ int makeTest(struct matrix mA, struct matrix mB, struct matrix mC) {
     if(mR.rows == mC.rows && mR.columns == mC.columns) {
         for(int row=0; row < mR.rows; row++) {
             for(int col=0; col < mR.columns; col++) {
-                if (mR.table[row][col] != mC.table[row][col]) {
-                    printf("%d %d", mR.table[row][col], mC.table[row][col]);
+                if (mR.table[row][col] != mC.table[row][col])
                     return -1;
-                }
-//                    return -1;
             }
         }
         return 0;

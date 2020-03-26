@@ -3,7 +3,6 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <ftw.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/file.h>
@@ -247,11 +246,12 @@ struct matrix getMatrixA(int fileDesc) {
         int currDigit;
 
         read(fileDesc, currChar, 1);
+        int sign = 1;
         while(column < columns) {
             if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
-                m.table[row][column] = currValue;
+                m.table[row][column] = currValue * sign;
                 currValue = 0;
-
+                sign = 1;
                 column++;
 
                 if(strcmp(currChar, "\n") == 0)
@@ -259,8 +259,12 @@ struct matrix getMatrixA(int fileDesc) {
             }
             else {
                 currDigit = (int) strtol(currChar, &rest, 10);
-                if(strcmp(rest, "") != 0)
-                    perror("invalid matrix file, there should be just numbers");
+                if(strcmp(rest, "") != 0) {
+                    if (strcmp(rest, "-") == 0)
+                        sign = -1;
+                    else
+                        perror("invalid matrix file, there should be just numbers");
+                }
 
                 currValue *= 10;
                 currValue += currDigit;
@@ -312,10 +316,12 @@ struct matrix getMatrixBBlock(int fileDesc, int *blockIndex, int *endOfMatrix) {
             int currDigit;
 
             read(fileDesc, currChar, 1);
+            int sign = 1;
             while(column < columns) {
                 if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
                     if(column >= startColumn && column < startColumn + columnsTaken) {
-                        m.table[row][column-startColumn] = currValue;
+                        m.table[row][column-startColumn] = currValue * sign;
+                        sign = 1;
                         currValue = 0;
                     }
                     column++;
@@ -325,8 +331,12 @@ struct matrix getMatrixBBlock(int fileDesc, int *blockIndex, int *endOfMatrix) {
                 }
                 else if(column >= startColumn && column < startColumn + columnsTaken) {
                     currDigit = (int) strtol(currChar, &rest, 10);
-                    if(strcmp(rest, "") != 0)
-                        perror("invalid matrix file, there should be just numbers");
+                    if(strcmp(rest, "") != 0) {
+                        if (strcmp(rest, "-") == 0)
+                            sign = -1;
+                        else
+                            perror("invalid matrix file, there should be just numbers");
+                    }
 
                     currValue *= 10;
                     currValue += currDigit;
@@ -455,9 +465,11 @@ struct matrix getMatrixFromOutputFile(int fileDesc, struct matrix mBlock, int rB
     char *rest = calloc(1, sizeof(char));
 
     char *currChar = calloc(1, sizeof(char));
+    int sign = 1;
     while(currRow < rows) {
         if(strcmp(currChar, " ") == 0 || strcmp(currChar, "\n") == 0) {
-            outputM.table[currRow][currColumn] = currNum;
+            outputM.table[currRow][currColumn] = currNum * sign;
+            sign = 1;
             currNum = 0;
 
             if(strcmp(currChar, " ") == 0)
@@ -469,8 +481,12 @@ struct matrix getMatrixFromOutputFile(int fileDesc, struct matrix mBlock, int rB
         }
         else {
             currDigit = (int) strtol(currChar, &rest, 10);
-            if(strcmp(rest, "") != 0)
-                perror("invalid matrix file, there should be just numbers");
+            if(strcmp(rest, "") != 0) {
+                if (strcmp(rest, "-") == 0)
+                    sign = -1;
+                else
+                    perror("invalid matrix file, there should be just numbers");
+            }
 
             currNum *= 10;
             currNum += currDigit;
@@ -764,7 +780,6 @@ void writeUsageReport(struct rusage usageStart, struct rusage usageEnd) {
     printf("User time usage: %lf\n\n", (double) userUsage / 1000000);
 }
 
-// TODO liczby ujemmne
 int main(int argc, char **argv) {
     if(argc < 7)
         perror("too few arguments");
@@ -884,8 +899,6 @@ int main(int argc, char **argv) {
                 FILE *file = fopen(getTmpSeparateFile(outputFileName, i), "w");
                 fclose(file);
             }
-
-
         }
         else
             perror("invalid forth argument");
