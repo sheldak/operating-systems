@@ -10,8 +10,7 @@
 #include <sys/file.h>
 #include <errno.h>
 
-#include "generator.c"
-
+#define SIZE 256
 #define COMMON 0
 #define SEPARATE 1
 
@@ -19,10 +18,30 @@ const char *listsDir = "lists/";
 const char *matricesDir = "matrices/";
 const int blockSize = 5;
 
+struct matrix {
+    int rows;
+    int columns;
+    int **table;
+};
+
 struct matrixSpecs {
     int blocks;
     int *blocksOfColumns;
 };
+
+int getNumSize(int num) {
+    int size = 1;
+    if(num < 0) {
+        size += 1;
+        num *= -1;
+    }
+    while(num / 10 > 0){
+        size++;
+        num /= 10;
+    }
+
+    return size;
+}
 
 char *getTmpListPath(char *listName) {
     char *tmpListPath = calloc(SIZE, sizeof(char));
@@ -684,7 +703,7 @@ int makeMultiplication(char *listName, int resultsSaving, int *multiplications) 
     return 0;
 }
 
-
+// TODO liczby ujemmne
 int main(int argc, char **argv) {
     if(argc < 5)
         perror("too few arguments");
@@ -808,6 +827,8 @@ int main(int argc, char **argv) {
             }
         }
     }
+
+
 
 
 
