@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/times.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <dirent.h>
@@ -9,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/file.h>
 #include <errno.h>
+#include <time.h>
 
 #define SIZE 256
 #define COMMON 0
@@ -540,52 +542,65 @@ void writeMatrixBlockToFileCommon(char *fileName, struct matrix m, int rBlockInd
     char *tmpFilePath = getTmpMatrixPath(fileName);
 
     // getting data (containing information where to put new matrix block) from tmp file
-    int tmpFileDesc = open(tmpFilePath, O_RDWR);
-    while(flock(tmpFileDesc, LOCK_EX | LOCK_NB) == -1) {}
+    int canPrint = -1;
 
-    struct matrixSpecs mSpecs = getMatrixSpecifications(tmpFileDesc);
-    mSpecs.blocksOfColumns[rBlockIndex]++;
+    while(canPrint != 0) {
+        int tmpFileDesc = open(tmpFilePath, O_RDWR);
+        while(flock(tmpFileDesc, LOCK_EX | LOCK_NB) == -1) {}
 
-    // getting matrix from output file (made by other processes or other iterations of multiplication)
-    int fileDesc = open(filePath, O_RDWR);
-    while(flock(fileDesc, LOCK_EX | LOCK_NB) == -1) {}
+        struct matrixSpecs mSpecs = getMatrixSpecifications(tmpFileDesc);
+        if(mSpecs.blocksOfColumns[rBlockIndex] == cBlockIndex) {
+            canPrint = 0;
+            mSpecs.blocksOfColumns[rBlockIndex]++;
 
-    struct matrix matrixC = getMatrixFromOutputFile(fileDesc, m, rBlockIndex, cBlockIndex);
+            // getting matrix from output file (made by other processes or other iterations of multiplication)
+            int fileDesc = open(filePath, O_RDWR);
+            while(flock(fileDesc, LOCK_EX | LOCK_NB) == -1) {}
 
-    // updating matrix from output file by adding a new block of multiplications (matrix m)
-    updateMatrix(matrixC, m, rBlockIndex, cBlockIndex);
+            struct matrix matrixC = getMatrixFromOutputFile(fileDesc, m, rBlockIndex, cBlockIndex);
 
-    // writing matrix to file
-    writeOutputMatrixToFile(fileDesc, matrixC, mSpecs);
+            // updating matrix from output file by adding a new block of multiplications (matrix m)
+            updateMatrix(matrixC, m, rBlockIndex, cBlockIndex);
 
-    // updating temporary output file
-    updateTmpOutputFile(tmpFileDesc, mSpecs);
+            // writing matrix to file
+            writeOutputMatrixToFile(fileDesc, matrixC, mSpecs);
 
-    // unlocking files
-    flock(fileDesc, LOCK_UN);
-    flock(tmpFileDesc, LOCK_UN);
-    close(fileDesc);
-    close(tmpFileDesc);
+            // updating temporary output file
+            updateTmpOutputFile(tmpFileDesc, mSpecs);
 
-//    for(int i=0; i<matrixC.rows; i++) {
-//        for(int j=0; j<matrixC.columns; j++)
-//            printf("%d ", matrixC.table[i][j]);
-//        printf("\n");
-//    }
-//    printf("\n");
+            // unlocking file
+            flock(fileDesc, LOCK_UN);
 
+            close(fileDesc);
 
-    if(!mSpecs.blocksOfColumns)
-        printf("S\n");
+            if(!mSpecs.blocksOfColumns)
+                printf("S\n");
+        }
+
+        // unlocking temporary file
+        flock(tmpFileDesc, LOCK_UN);
+        close(tmpFileDesc);
+
+    }
+}
+
+void writeMatrixBlockToFileSeparate(char *fileName, struct matrix m, int rBlockIndex, int cBlockIndex) {
 
 }
 
-int makeMultiplication(char *listName, int resultsSaving, int *multiplications) {
+int makeMultiplication(char *listName, int resultsSaving, time_t endTime, int *multiplications) {
+    // end of time for the process
+    if(time(0) >= endTime)
+        return -1;
+
     // reading list file
     char *tmpListPath = getTmpListPath(listName);
 
     int listFileDesc = open(tmpListPath, O_RDWR);
-    while(flock(listFileDesc, LOCK_EX | LOCK_NB) == -1) {}
+    while(flock(listFileDesc, LOCK_EX | LOCK_NB) == -1) {
+        if(time(0) >= endTime)
+            return -1;
+    }
 
     int multiNum = getMultiplicationsNum(listFileDesc);
     int multiIndex = getCurrMultiplicationIndex(listFileDesc);
@@ -608,7 +623,10 @@ int makeMultiplication(char *listName, int resultsSaving, int *multiplications) 
         // opening file with matrix B to read a block (it is necessary to block other processes from editing)
         // starting with B because matrix B may cause list file edition and it is better to unlock list file earlier
         int matrixBFileDesc = open(tmpMatrixBPath, O_RDWR);
-        while(flock(matrixBFileDesc, LOCK_EX | LOCK_NB) == -1) {}
+        while(flock(matrixBFileDesc, LOCK_EX | LOCK_NB) == -1) {
+            if(time(0) >= endTime)
+                return -1;
+        }
 
         int blockBIndex, endOfMatrix;
         struct matrix matrixB = getMatrixBBlock(matrixBFileDesc, &blockBIndex, &endOfMatrix);
@@ -662,6 +680,9 @@ int makeMultiplication(char *listName, int resultsSaving, int *multiplications) 
                 blocksOfMultiplication--;
 
             for(int blockAIndex=0; blockAIndex<blocksOfMultiplication; blockAIndex++) {
+                if(time(0) >= endTime)
+                    return -1;
+
                 int rowsAToMultiply = blockSize;
                 if(blockAIndex == blocksOfMultiplication - 1)
                     rowsAToMultiply = (matrixA.rows-1) % blockSize + 1;
@@ -670,6 +691,10 @@ int makeMultiplication(char *listName, int resultsSaving, int *multiplications) 
 
                 if(resultsSaving == COMMON)
                     writeMatrixBlockToFileCommon(outputFileName, resultMatrix, blockAIndex, blockBIndex);
+                else if(resultsSaving == SEPARATE)
+                    writeMatrixBlockToFileSeparate(outputFileName, resultMatrix, blockAIndex, blockBIndex);
+                else
+                    perror("invalid forth argument");
 
                 *multiplications += 1;
 
@@ -783,25 +808,32 @@ int main(int argc, char **argv) {
         strcat(command, tmpOutputFilePath);
         system(command);
 
-        // preparing output file
-        char *outputFilePath = calloc(SIZE, sizeof(char));
-        strcpy(outputFilePath, matricesDir);
-        strcat(outputFilePath, outputFileName);
-        char *lineToOutputFile = "0 0\n";
-        FILE *matrixCFile = fopen(outputFilePath, "w");
-        fwrite(lineToOutputFile, 4, sizeof(char), matrixCFile);
-        fclose(matrixCFile);
+        if(resultsSaving == COMMON) {
+            // preparing output file
+            char *outputFilePath = calloc(SIZE, sizeof(char));
+            strcpy(outputFilePath, matricesDir);
+            strcat(outputFilePath, outputFileName);
+            char *lineToOutputFile = "0 0\n";
+            FILE *matrixCFile = fopen(outputFilePath, "w");
+            fwrite(lineToOutputFile, 4, sizeof(char), matrixCFile);
+            fclose(matrixCFile);
 
-        // preparing temporary output file
-        int matrixAFileDesc = open(inputFilePath1, O_RDONLY);
-        int rows, columns;
-        getFirstLineFromMatrix(matrixAFileDesc, &rows, &columns);
-        close(matrixAFileDesc);
+            // preparing temporary output file
+            int matrixAFileDesc = open(inputFilePath1, O_RDONLY);
+            int rows, columns;
+            getFirstLineFromMatrix(matrixAFileDesc, &rows, &columns);
+            close(matrixAFileDesc);
 
-        int matrixCTmpFileDesc = open(tmpOutputFilePath, O_WRONLY);
-        for(int i=0; i<rows/blockSize + 1; i++)
-            write(matrixCTmpFileDesc, "0\n", 2);
-        close(matrixCTmpFileDesc);
+            FILE *matrixCTmpFile = fopen(tmpOutputFilePath, "w");
+            for(int i=0; i<rows/blockSize + 1; i++)
+                fwrite("0\n", 2, sizeof(char), matrixCTmpFile);
+            fclose(matrixCTmpFile);
+        }
+        else if(resultsSaving == SEPARATE) {
+
+        }
+        else
+            perror("invalid forth argument");
 
         currLine++;
     }
@@ -814,8 +846,10 @@ int main(int argc, char **argv) {
     for(int i=0; i<processesNum && myPID != 0; i++)
         myPID = fork();
 
-    if(myPID == 0)
-        while(makeMultiplication(argv[1], resultsSaving, &multiplications) != -1){}
+    if(myPID == 0) {
+        time_t endTime = time(0) + maxTime;
+        while (makeMultiplication(argv[1], resultsSaving, endTime, &multiplications) != -1) {}
+    }
     else {
         for(int i=0; i<processesNum; i++) {
             int status;
@@ -829,10 +863,7 @@ int main(int argc, char **argv) {
     }
 
 
-
-
-
-//    FILE *file = fopen("a.txt", "r+");
+//    FILE *file = fopen("a.csv", "r+");
 //    fwrite("we", 2, sizeof(char), file);
 //    fclose(file);
 //
@@ -841,33 +872,9 @@ int main(int argc, char **argv) {
 //    fwrite("2003", 4, sizeof(char), file);
 //    fclose(file);
 
+//    system("paste -d \" \" a.csv b.csv > c.csv");
 
-//    pid_t pid1 = fork();
-//    pid_t pid2 = -1;
-//    if(pid1 != 0)
-//        pid2 = fork();
 
-//    if(pid1 == 0 || pid2 == 0) {
-//        fileDesc = open("lists/listTmp.txt", O_RDWR);
-////        printf("%d\n", flock(fileDesc, LOCK_NB));
-//        while(flock(fileDesc, LOCK_EX | LOCK_NB) == -1) {
-//
-//        }
-//        printf("%d\n", flock(fileDesc, LOCK_EX | LOCK_NB));
-////        printf("%s\n", errno);
-//        char *tr = calloc(1, sizeof(char));
-//        read(fileDesc, tr, 1);
-//        lseek(fileDesc, 0, SEEK_SET);
-//        printf("%s\n", tr);
-////
-//        if(strcmp(tr, "3") ==0)
-//            write(fileDesc, "4", 1);
-//        else {
-//            write(fileDesc, "3", 1);
-//        }
-//
-//        flock(fileDesc, LOCK_UN);
-//    }
 
     return multiplications;
 }

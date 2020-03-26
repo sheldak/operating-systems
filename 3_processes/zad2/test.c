@@ -162,9 +162,9 @@ int main(int argc, char **argv) {
     int testResult = makeTest(mA, mB, mC);
 
     if(testResult == 0)
-        printf("Matrix in file %s is multiplied correctly\n", fileC);
+        printf("Matrix in file %s is correct\n", fileC);
     else
-        printf("Matrix in file %s is multiplied incorrectly\n", fileC);
+        printf("Matrix in file %s is incorrect\n", fileC);
 
     return 0;
 }

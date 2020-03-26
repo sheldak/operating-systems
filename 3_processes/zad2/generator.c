@@ -106,7 +106,7 @@ void generateMatrices(int n, int min, int max, char **filePathsA, char **filePat
         writeMatrixToFile(filePathsA[i], mA, -1);
         writeMatrixToFile(filePathsB[i], mB, 0);
 
-        writeEmptyMatrixToFile(filePathsC[i]);
+//        writeEmptyMatrixToFile(filePathsC[i]);
 
         freeMatrix(mA);
         freeMatrix(mB);

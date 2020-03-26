@@ -1,3 +1,7 @@
-2 00
+6 00
 in1.csv in2.csv out1.csv
+in3.csv in4.csv out2.csv
 in5.csv in6.csv out3.csv
+in7.csv in8.csv out4.csv
+in9.csv in10.csv out5.csv
+in11.csv in12.csv out6.csv
