@@ -10,19 +10,14 @@
 #include <sys/file.h>
 #include <errno.h>
 
-#define SIZE 256
+#include "generator.c"
+
 #define COMMON 0
 #define SEPARATE 1
 
 const char *listsDir = "lists/";
 const char *matricesDir = "matrices/";
 const int blockSize = 5;
-
-struct matrix {
-    int rows;
-    int columns;
-    int **table;
-};
 
 struct matrixSpecs {
     int blocks;
@@ -474,16 +469,6 @@ void updateMatrix(struct matrix m, struct matrix mBlock, int rBlockIndex, int cB
         for(int j=0; j<mBlock.columns; j++)
             m.table[rBlockIndex*blockSize + i][cBlockIndex*blockSize + j] = mBlock.table[i][j];
     }
-}
-
-int getNumSize(int num) {
-    int size = 1;
-    while(num / 10 > 0){
-        size++;
-        num /= 10;
-    }
-
-    return size;
 }
 
 int min(int a, int b) {
