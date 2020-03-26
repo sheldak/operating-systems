@@ -1,15 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/times.h>
 #include <sys/stat.h>
 #include <unistd.h>
-#include <dirent.h>
 #include <ftw.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <sys/file.h>
-#include <errno.h>
 #include <time.h>
 
 #define SIZE 256
@@ -584,8 +581,42 @@ void writeMatrixBlockToFileCommon(char *fileName, struct matrix m, int rBlockInd
     }
 }
 
-void writeMatrixBlockToFileSeparate(char *fileName, struct matrix m, int rBlockIndex, int cBlockIndex) {
+char *getTmpSeparateFile(char *fileName, int columnsBlock) {
+    char *tmpNum = calloc(SIZE, sizeof(char));
+    sprintf(tmpNum, "tmp%d_", columnsBlock);
 
+    char *filePath = calloc(SIZE, sizeof(char));
+    strcpy(filePath, matricesDir);
+    strcat(filePath, tmpNum);
+    strcat(filePath, fileName);
+
+    return filePath;
+}
+
+void writeMatrixBlockToFileSeparate(char *fileName, struct matrix m, int cBlockIndex) {
+    // getting file name
+    char *filePath = getTmpSeparateFile(fileName, cBlockIndex);
+
+    // writing matrix to file
+    FILE *file = fopen(filePath, "a+");
+    fseek(file, 0, SEEK_END);
+
+    char *line = calloc(SIZE, sizeof(char));
+    char *num = calloc(SIZE, sizeof(char));
+    int size = 0;
+
+    for(int i=0; i<m.rows; i++) {
+        memset(line, 0, SIZE);
+        size = 0;
+        for(int j=0; j<m.columns; j++) {
+            sprintf(num, "%d ", m.table[i][j]);
+            strcat(line, num);
+            size += getNumSize(m.table[i][j])+1;
+        }
+        line[size-1] = '\n';
+        fwrite(line, size, sizeof(char), file);
+    }
+    fclose(file);
 }
 
 int makeMultiplication(char *listName, int resultsSaving, time_t endTime, int *multiplications) {
@@ -692,38 +723,13 @@ int makeMultiplication(char *listName, int resultsSaving, time_t endTime, int *m
                 if(resultsSaving == COMMON)
                     writeMatrixBlockToFileCommon(outputFileName, resultMatrix, blockAIndex, blockBIndex);
                 else if(resultsSaving == SEPARATE)
-                    writeMatrixBlockToFileSeparate(outputFileName, resultMatrix, blockAIndex, blockBIndex);
+                    writeMatrixBlockToFileSeparate(outputFileName, resultMatrix, blockBIndex);
                 else
                     perror("invalid forth argument");
 
                 *multiplications += 1;
-
-//                for(int k=0; k<matrixA.rows; k++) {
-//                    for(int j=0; j<matrixA.columns; j++)
-//                        printf("%d ", matrixA.table[k][j]);
-//                    printf("\n");
-//                }
-//                printf("\n");
-//
-//                for(int k=0; k<matrixB.rows; k++) {
-//                    for(int j=0; j<matrixB.columns; j++)
-//                        printf("%d ", matrixB.table[k][j]);
-//                    printf("\n");
-//                }
-//                printf("\n");
-//
-//                for(int k=0; k<rowsAToMultiply; k++) {
-//                    for(int j=0; j<matrixB.columns; j++)
-//                        printf("%d ", resultMatrix.table[k][j]);
-//                    printf("\n");
-//                }
             }
-
-
-
         }
-
-
     }
     return 0;
 }
@@ -801,13 +807,6 @@ int main(int argc, char **argv) {
         char *tmpInputFilePath2 = getTmpMatrixPath(inputFileName2);
         copyFile(inputFilePath2, tmpInputFilePath2);
 
-        // creating a temporary output file which will be using during multiplication
-        char *tmpOutputFilePath = getTmpMatrixPath(outputFileName);
-        char *command = calloc(SIZE, sizeof(char));
-        strcpy(command, "touch ");
-        strcat(command, tmpOutputFilePath);
-        system(command);
-
         if(resultsSaving == COMMON) {
             // preparing output file
             char *outputFilePath = calloc(SIZE, sizeof(char));
@@ -819,6 +818,7 @@ int main(int argc, char **argv) {
             fclose(matrixCFile);
 
             // preparing temporary output file
+            char *tmpOutputFilePath = getTmpMatrixPath(outputFileName);
             int matrixAFileDesc = open(inputFilePath1, O_RDONLY);
             int rows, columns;
             getFirstLineFromMatrix(matrixAFileDesc, &rows, &columns);
@@ -830,6 +830,17 @@ int main(int argc, char **argv) {
             fclose(matrixCTmpFile);
         }
         else if(resultsSaving == SEPARATE) {
+            // preparing temporary output files
+            int matrixBFileDesc = open(inputFilePath2, O_RDONLY);
+            int rows, columns, st;
+            getFirstLineFromMatrixB(matrixBFileDesc, &rows, &columns, &st);
+            close(matrixBFileDesc);
+
+            for(int i=0; i < (columns-1)/blockSize + 1; i++) {
+                FILE *file = fopen(getTmpSeparateFile(outputFileName, i), "w");
+                fclose(file);
+            }
+
 
         }
         else
@@ -860,21 +871,15 @@ int main(int argc, char **argv) {
                 printf("Process %d has made %d multiplications\n", curr_pid, processMultiplications);
             }
         }
+
+        if(resultsSaving == SEPARATE) {
+            myPID = fork();
+            if(myPID == 0) {
+                char * const newArgv[] = {"paster", argv[1], NULL};
+                execvp("./paster", newArgv);
+            }
+        }
     }
-
-
-//    FILE *file = fopen("a.csv", "r+");
-//    fwrite("we", 2, sizeof(char), file);
-//    fclose(file);
-//
-//    file = fopen("a.txt", "r+");
-//    fseek(file, 1, SEEK_SET);
-//    fwrite("2003", 4, sizeof(char), file);
-//    fclose(file);
-
-//    system("paste -d \" \" a.csv b.csv > c.csv");
-
-
 
     return multiplications;
 }

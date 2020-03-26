@@ -119,8 +119,11 @@ int makeTest(struct matrix mA, struct matrix mB, struct matrix mC) {
     if(mR.rows == mC.rows && mR.columns == mC.columns) {
         for(int row=0; row < mR.rows; row++) {
             for(int col=0; col < mR.columns; col++) {
-                if (mR.table[row][col] != mC.table[row][col])
+                if (mR.table[row][col] != mC.table[row][col]) {
+                    printf("%d %d", mR.table[row][col], mC.table[row][col]);
                     return -1;
+                }
+//                    return -1;
             }
         }
         return 0;
