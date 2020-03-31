@@ -1,13 +1,8 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <unistd.h>
-#include <dirent.h>
 #include <ftw.h>
 #include <sys/wait.h>
-
-#define SIZE 256
 
 void handlerUSR1(int signum) {
     pid_t pid = getpid();
