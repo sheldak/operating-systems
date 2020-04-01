@@ -93,6 +93,8 @@ int main(int argc, char **argv) {
             kill(catcherPID, SIG1);
             canSend = 0;
         }
+
+        while (canSend == 0) {}
         kill(catcherPID, SIG2);
     }
     else {
@@ -108,6 +110,8 @@ int main(int argc, char **argv) {
             sigqueue(catcherPID, SIG1, value);
             canSend = 0;
         }
+
+        while(canSend == 0) {}
         sigqueue(catcherPID, SIG2, value);
     }
     sendingEnded = 1;
