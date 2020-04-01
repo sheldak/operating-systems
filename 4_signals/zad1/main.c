@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <signal.h>
 #include <sys/wait.h>
 
 #define SIZE 256
@@ -64,6 +65,8 @@ int main(int argc, char **argv) {
             list();
             sleep(1);
         }
+        else
+            pause();
     }
     return 0;
 }
