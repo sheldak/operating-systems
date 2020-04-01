@@ -8,8 +8,23 @@ pid_t senderPID = -1;
 int signalsCaught = 0;
 int caughtAll = 0;
 
+int mode = 0; // 0 - kill function, 1 - sigqueue function
+
 int SIG1 = 0;
 int SIG2 = 0;
+
+void sendSignal(int signum, int sigValue) {
+    // using kill function to send signals (modes: "kill" and "sigrt")
+    if(mode == 0)
+        kill(senderPID, signum);
+        // using sigqueue function to send signals (mode: "sigqueue")
+    else {
+        union sigval value;
+        value.sival_int = sigValue;
+
+        sigqueue(senderPID, signum, value);
+    }
+}
 
 void handler(int signum, siginfo_t *info, void *ucontext) {
     // saving sender's PID useful for sending signals later
@@ -17,8 +32,10 @@ void handler(int signum, siginfo_t *info, void *ucontext) {
         senderPID = info->si_pid;
 
     // counting signals
-    if(signum == SIG1)
+    if(signum == SIG1) {
         signalsCaught++;
+        sendSignal(SIG1, -1);
+    }
     else if(signum == SIG2)
         caughtAll = 1;
 }
@@ -60,6 +77,8 @@ int main(int argc, char **argv) {
     sigaction(SIG1, &action, NULL);
     sigaction(SIG2, &action, NULL);
 
+    if(strcmp(argv[1], arguments[1]) == 0)
+        mode = 1;
 
     // waiting for all signals from sender
     while(caughtAll == 0) {}
@@ -67,22 +86,15 @@ int main(int argc, char **argv) {
     if(strcmp(argv[1], arguments[1]) != 0) {
         // using kill function to send signals (modes: "kill" and "sigrt")
         for(int i=0; i<signalsCaught; i++)
-            kill(senderPID, SIG1);
-        kill(senderPID, SIG2);
+            sendSignal(SIG1, -1);
+        sendSignal(SIG2, -1);
     }
     else {
         // using sigqueue function to send signals (mode: "sigqueue")
-        for(int i=0; i<signalsCaught; i++) {
-            union sigval value;
-            value.sival_int = i+1;
+        for(int i=0; i<signalsCaught; i++)
+            sendSignal(SIG1, i+1);
 
-            sigqueue(senderPID, SIG1, value);
-        }
-
-        union sigval value;
-        value.sival_int = signalsCaught;
-
-        sigqueue(senderPID, SIG2, value);
+        sendSignal(SIG2, signalsCaught);
     }
 
     // result message

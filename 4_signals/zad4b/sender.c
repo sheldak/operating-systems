@@ -10,6 +10,9 @@ int signals = 0;
 int signalsCaught = 0;
 int caughtAll = 0;
 
+int sendingEnded = 0;
+int canSend = 1;
+
 int catchersSignal = -1;
 
 int SIG1 = 0;
@@ -17,12 +20,18 @@ int SIG2 = 0;
 
 void handler(int signum, siginfo_t *info, void *ucontext) {
     // saving number of current catcher's signal (in case of mode "sigqueue")
-    if(catchersSignal >= 0)
+    if(sendingEnded == 1 && catchersSignal >= 0)
         catchersSignal = info->si_value.sival_int;
 
-    // counting signals
-    if(signum == SIG1)
-        signalsCaught++;
+    // getting first signal
+    if(signum == SIG1) {
+        // counting signal when sender has sent all of its signals
+        if(sendingEnded)
+            signalsCaught++;
+        // getting information that catcher has confirmed catching signal
+        else
+            canSend = 1;
+    }
     else if(signum == SIG2)
         caughtAll = 1;
 }
@@ -78,8 +87,12 @@ int main(int argc, char **argv) {
 
     if(strcmp(argv[3], arguments[1]) != 0) {
         // using kill function to send signals (modes: "kill" and "sigrt")
-        for(int i=0; i<signals; i++)
+        for(int i=0; i<signals; i++) {
+            while (canSend == 0) {}
+
             kill(catcherPID, SIG1);
+            canSend = 0;
+        }
         kill(catcherPID, SIG2);
     }
     else {
@@ -89,10 +102,15 @@ int main(int argc, char **argv) {
         union sigval value;
         value.sival_ptr = NULL;
 
-        for(int i=0; i<signals; i++)
+        for(int i=0; i<signals; i++) {
+            while(canSend == 0) {}
+
             sigqueue(catcherPID, SIG1, value);
+            canSend = 0;
+        }
         sigqueue(catcherPID, SIG2, value);
     }
+    sendingEnded = 1;
 
     // to wait for all signals from catcher
     while(caughtAll == 0){}
