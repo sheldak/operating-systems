@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <dirent.h>
-#include <signal.h>
 #include <sys/wait.h>
 #include <fcntl.h>
 
@@ -77,11 +75,13 @@ int main(int argc, char **argv) {
 
     close(fileDesc);
 
+    // making processes to interpret commands
     int i =0;
-    while(commandsSize[i] != 0) {
+    while(commandsSize[i] != 0) {  // for every line in the file
         int fd1[2];
         pipe(fd1);
 
+        // first command
         pid_t currPid = fork();
         if(currPid == 0) {
             close(fd1[0]);
@@ -90,6 +90,7 @@ int main(int argc, char **argv) {
             char **command = getCommand(commands[i][0]);
             execvp(command[0], command);
         }
+        // next commands
         else {
             int fd2[2];
 
@@ -102,6 +103,7 @@ int main(int argc, char **argv) {
                     close(fd2[0]);
                     dup2(fd1[0], STDIN_FILENO);
 
+                    // if not last command
                     if(j < commandsSize[i])
                         dup2(fd2[1], STDOUT_FILENO);
                     else
