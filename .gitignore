@@ -64,3 +64,6 @@ main
 !wyniki.txt
 !list.txt
 !commands.txt
+!toSort.txt
+!producer*.txt
+!consumer.txt
