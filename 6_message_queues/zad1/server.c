@@ -45,14 +45,14 @@ void handleSTOP(message *msg) {
 
 void handleLIST(message *msg) {
     // message which will be send to the new client
-    message response;
-    response.type = LIST;
+    message *response = malloc(sizeof(message));
+    response->type = LIST;
 
     // copying array
     for(int i=0; i<MAX_CLIENTS; i++)
-        response.unconnectedClients[i] = unconnectedClients[i];
+        response->unconnectedClients[i] = unconnectedClients[i];
 
-    if(msgsnd(clientsQueues[msg->clientID], &response, sizeof(response), 0) < 0) perror("Cannot send LIST");
+    if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0) perror("Cannot send LIST");
 }
 
 void handleINIT(message *msg) {
@@ -75,14 +75,14 @@ void handleINIT(message *msg) {
 
         response->type = STOP;
 
-        if(msgsnd(clientQueueID, response, sizeof(&response), 0) < 0) perror("Cannot send STOP");
+        if(msgsnd(clientQueueID, response, MESSAGE_SIZE, 0) < 0) perror("Cannot send STOP");
     }
     // if there is enough space for the new client, send INIT message with its ID to it
     else {
         response->type = INIT;
         response->clientID = newClientID;
 
-        if(msgsnd(clientsQueues[newClientID], response, sizeof(&response), 0) < 0) perror("Cannot send INIT");
+        if(msgsnd(clientsQueues[newClientID], response, MESSAGE_SIZE, 0) < 0) perror("Cannot send INIT");
         printf("Added new client with ID %d\n", newClientID);
     }
 }
@@ -126,7 +126,7 @@ int main() {
     while(1) {
         message *msgBuffer = malloc(sizeof(message));
 
-        msgrcv(queueID, msgBuffer, sizeof(&msgBuffer), RECEIVE_MTYPE, 0);
+        msgrcv(queueID, msgBuffer, MESSAGE_SIZE, RECEIVE_MTYPE, 0);
 
         handleMessage(msgBuffer);
 

@@ -12,6 +12,7 @@
 
 #define MAX_MESSAGE_SIZE 4096
 #define RECEIVE_MTYPE -6
+#define MESSAGE_SIZE (sizeof(message) - sizeof(long))
 
 
 typedef enum mtype {
@@ -26,6 +27,7 @@ typedef enum mtype {
 struct message {
     long type;
     key_t queueKey;
+    pid_t clientPID;
     int clientID;
     int unconnectedClients[MAX_CLIENTS];
 } typedef message;

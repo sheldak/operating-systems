@@ -46,7 +46,7 @@ void sendSTOP() {
     msg->clientID = ID;
 
     // sending STOP message to the server
-    if(msgsnd(serverQueueID, msg, sizeof(&msg), 0) < 0) perror("Cannot send STOP");
+    if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send STOP");
 
     // freeing memory
     free(msg);
@@ -78,25 +78,25 @@ int receiveMessage(int useNOWAIT) {
     int toReturn = 1;
 
     // creating message buffer
-    message msgBuffer;
+    message *msgBuffer = malloc(sizeof(message));
 
     // receiving message from server
     if(useNOWAIT == 1) {
-        if(msgrcv(queueID, &msgBuffer, sizeof(msgBuffer), RECEIVE_MTYPE, IPC_NOWAIT) < 0)
+        if(msgrcv(queueID, msgBuffer, MESSAGE_SIZE, RECEIVE_MTYPE, IPC_NOWAIT) < 0)
             toReturn = 0;
     }
     else {
-        if(msgrcv(queueID, &msgBuffer, sizeof(msgBuffer), RECEIVE_MTYPE, 0) < 0)
+        if(msgrcv(queueID, msgBuffer, MESSAGE_SIZE, RECEIVE_MTYPE, 0) < 0)
             perror("Cannot receive any message");
     }
 
     // handling message
-    if(msgBuffer.type == STOP)
+    if(msgBuffer->type == STOP)
         sendSTOP();
-    else if(msgBuffer.type == LIST)
-        handleLIST(&msgBuffer);
-    else if(msgBuffer.type == INIT)
-        handleINIT(&msgBuffer);
+    else if(msgBuffer->type == LIST)
+        handleLIST(msgBuffer);
+    else if(msgBuffer->type == INIT)
+        handleINIT(msgBuffer);
 
     return toReturn;
 }
@@ -108,7 +108,7 @@ void sendLIST() {
     msg->clientID = ID;
 
     // sending LIST message to the server
-    if(msgsnd(serverQueueID, msg, sizeof(&msg), 0) < 0) perror("Cannot send STOP");
+    if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send STOP");
 
     // receiving array with unconnected clients
     receiveMessage(0);
@@ -122,9 +122,10 @@ void registerClient() {
     message *msg = malloc(sizeof(message));
     msg->type = INIT;
     msg->queueKey = queueKey;
+    msg->clientPID = getpid();
 
     // sending INIT message to the server
-    if(msgsnd(serverQueueID, msg, sizeof(&msg), 0) < 0) perror("Cannot send INIT");
+    if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send INIT");
 
     // handling message
     receiveMessage(0);
