@@ -15,17 +15,19 @@
 
 
 typedef enum mtype {
-    INIT = 1,
-    LIST = 2,
-    CONNECT = 3,
-    DISCONNECT = 4,
-    STOP = 5
+    STOP = 1,
+    DISCONNECT = 2,
+    LIST = 3,
+    CONNECT = 4,
+    INIT = 5
 } mtype;
 
 
 struct message {
     long type;
     key_t queueKey;
+    int clientID;
+    int unconnectedClients[MAX_CLIENTS];
 } typedef message;
 
 
