@@ -13,22 +13,7 @@
 int queueID = -1;
 int clientsQueues[MAX_CLIENTS];
 int unconnectedClients[MAX_CLIENTS];
-
-void termination() {
-    // deleting message queue
-    if(msgctl(queueID, IPC_RMID, NULL) == 0)
-        printf("\nMessage queue removed successfully\n");
-    else
-        perror("\nError when removing message queue");
-
-    // terminating process
-    exit(0);
-}
-
-void handleINTSignal(int signum) {
-    // terminating process (it will call termination function because of atexit)
-    exit(0);
-}
+int clientsPIDs[MAX_CLIENTS];
 
 void handleSTOP(message *msg) {
     // removing client from array with clients
@@ -63,6 +48,7 @@ void handleINIT(message *msg) {
             newClientID = i;
             clientsQueues[i] = msgget(msg->queueKey, 0666);
             unconnectedClients[i] = 1;
+            clientsPIDs[i] = msg->clientPID;
         }
     }
 
@@ -96,6 +82,45 @@ void handleMessage(message *msg) {
         handleINIT(msg);
 }
 
+void receiveMessage(int mtype) {
+    // creating message buffer
+    message *msgBuffer = malloc(sizeof(message));
+
+    // receiving message from client
+    if(msgrcv(queueID, msgBuffer, MESSAGE_SIZE, mtype, 0) < 0)
+        perror("Cannot receive any message");
+
+    // handling message
+    handleMessage(msgBuffer);
+}
+
+void termination() {
+    // terminating all clients
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clientsQueues[i] != - 1)
+            kill(clientsPIDs[i], SIGINT);
+    }
+    // getting stop messages of all clients to ensure their terminations
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clientsQueues[i] != - 1)
+            receiveMessage(STOP);
+    }
+
+    // deleting message queue
+    if(msgctl(queueID, IPC_RMID, NULL) == 0)
+        printf("\nMessage queue removed successfully\n");
+    else
+        perror("\nError when removing message queue");
+
+    // terminating process
+    exit(0);
+}
+
+void handleINTSignal(int signum) {
+    // terminating process (it will call termination function because of atexit)
+    exit(0);
+}
+
 int main() {
     if (setvbuf(stdout, NULL, _IONBF, 0) != 0) {
         printf("Error: buffering mode could not be changed!\n");
@@ -124,13 +149,7 @@ int main() {
 
     // handling messages from clients
     while(1) {
-        message *msgBuffer = malloc(sizeof(message));
-
-        msgrcv(queueID, msgBuffer, MESSAGE_SIZE, RECEIVE_MTYPE, 0);
-
-        handleMessage(msgBuffer);
-
-        free(msgBuffer);
+        receiveMessage(RECEIVE_MTYPE);
     }
 
     return 0;
