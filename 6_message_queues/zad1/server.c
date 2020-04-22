@@ -11,6 +11,7 @@
 #include "utilities.h"
 
 int queueID = -1;
+int clientsQueueKeys[MAX_CLIENTS];
 int clientsQueues[MAX_CLIENTS];
 int unconnectedClients[MAX_CLIENTS];
 int clientsPIDs[MAX_CLIENTS];
@@ -28,6 +29,13 @@ void handleSTOP(message *msg) {
         printf("Client with ID %d removed\n", msg->clientID);
 }
 
+void handleDISCONNECT(message *msg) {
+    unconnectedClients[msg->clientID] = 1;
+    unconnectedClients[msg->toConnectID] = 1;
+
+    printf("%d and %d disconnected\n", msg->clientID, msg->toConnectID);
+}
+
 void handleLIST(message *msg) {
     // message which will be send to the new client
     message *response = malloc(sizeof(message));
@@ -37,7 +45,51 @@ void handleLIST(message *msg) {
     for(int i=0; i<MAX_CLIENTS; i++)
         response->unconnectedClients[i] = unconnectedClients[i];
 
+    // to not send requesting client as available to itself
+    response->unconnectedClients[msg->clientID] = 0;
+
     if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0) perror("Cannot send LIST");
+}
+
+void handleCONNECT(message *msg) {
+    // messages which will be send to clients
+    message *response = malloc(sizeof(message));
+    response->type = CONNECT;
+
+    // checking if client to connect exists and is a different client
+    if(unconnectedClients[msg->toConnectID] == 1 && msg->clientID != msg->toConnectID) {
+        // sending queue key and PID to the client which sent CONNECT commission
+        response->queueKey = clientsQueueKeys[msg->toConnectID];
+        response->clientPID = clientsPIDs[msg->toConnectID];
+        response->clientID = msg->toConnectID;
+
+        if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0)
+            perror("Cannot send CONNECT to first client");
+
+        // sending queue key and PID to the client with whom previous client want to connect
+        response->queueKey = clientsQueueKeys[msg->clientID];
+        response->clientPID = clientsPIDs[msg->clientID];
+        response->clientID = msg->clientID;
+
+        if(msgsnd(clientsQueues[msg->toConnectID], response, MESSAGE_SIZE, 0) < 0)
+            perror("Cannot send CONNECT to second client");
+
+        // sending signal to second client to make it read message
+        kill(clientsPIDs[msg->toConnectID], SIGUSR1);
+
+        // marking clients as unreachable
+        unconnectedClients[msg->clientID] = 0;
+        unconnectedClients[msg->toConnectID] = 0;
+
+        printf("%d and %d connected\n", msg->clientID, msg->toConnectID);
+    }
+    else {
+        // sending PID = -1 as a flag to the requesting client because it has sent invalid client ID
+        response->clientPID = -1;
+
+        if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0)
+            perror("Cannot send CONNECT to client when there is no client with passed ID");
+    }
 }
 
 void handleINIT(message *msg) {
@@ -46,6 +98,7 @@ void handleINIT(message *msg) {
     for(int i=0; i<MAX_CLIENTS && newClientID == -1; i++) {
         if(clientsQueues[i] == -1) {
             newClientID = i;
+            clientsQueueKeys[i] = msg->queueKey;
             clientsQueues[i] = msgget(msg->queueKey, 0666);
             unconnectedClients[i] = 1;
             clientsPIDs[i] = msg->clientPID;
@@ -76,8 +129,12 @@ void handleINIT(message *msg) {
 void handleMessage(message *msg) {
     if(msg->type == STOP)
         handleSTOP(msg);
+    else if(msg->type == DISCONNECT)
+        handleDISCONNECT(msg);
     else if(msg->type == LIST)
         handleLIST(msg);
+    else if(msg->type == CONNECT)
+        handleCONNECT(msg);
     else if(msg->type == INIT)
         handleINIT(msg);
 }
@@ -133,10 +190,11 @@ int main() {
     // deleting message queue in case of SIGINT signal
     if (signal(SIGINT, handleINTSignal) == SIG_ERR) perror("signal function error");
 
-    // initialing array with clients queues IDs and array of unconnected clients
+    // initialing array with clients queues IDs, array of unconnected clients and array with client's PIDs
     for(int i=0; i<MAX_CLIENTS; i++) {
         clientsQueues[i] = -1;
         unconnectedClients[i] = 0;
+        clientsPIDs[i] = -1;
     }
 
     // getting key for message queue

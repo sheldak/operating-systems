@@ -11,7 +11,7 @@
 #define PROJECT_ID 'A'
 
 #define MAX_MESSAGE_SIZE 4096
-#define RECEIVE_MTYPE -6
+#define RECEIVE_MTYPE -7
 #define MESSAGE_SIZE (sizeof(message) - sizeof(long))
 
 
@@ -20,7 +20,8 @@ typedef enum mtype {
     DISCONNECT = 2,
     LIST = 3,
     CONNECT = 4,
-    INIT = 5
+    INIT = 5,
+    MSG = 6
 } mtype;
 
 
@@ -29,7 +30,9 @@ struct message {
     key_t queueKey;
     pid_t clientPID;
     int clientID;
+    int toConnectID;
     int unconnectedClients[MAX_CLIENTS];
+    char message[SIZE];
 } typedef message;
 
 
