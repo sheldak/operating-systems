@@ -10,7 +10,6 @@
 #define MAX_CLIENTS  15
 #define PROJECT_ID 'A'
 
-#define MAX_MESSAGE_SIZE 4096
 #define RECEIVE_MTYPE -7
 #define MESSAGE_SIZE (sizeof(message) - sizeof(long))
 
@@ -31,6 +30,7 @@ struct message {
     pid_t clientPID;
     int clientID;
     int toConnectID;
+    int allClients[MAX_CLIENTS];
     int unconnectedClients[MAX_CLIENTS];
     char message[SIZE];
 } typedef message;

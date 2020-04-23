@@ -3,11 +3,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
-#include <errno.h>
 
 #include "utilities.h"
 
@@ -72,6 +70,13 @@ void handleDISCONNECT() {
 }
 
 void handleLIST(message *msg) {
+    printf("All clients: ");
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(msg->allClients[i] == 1)
+            printf("%d ", i);
+    }
+    printf("\n");
+
     printf("You can connect with: ");
     for(int i=0; i<MAX_CLIENTS; i++) {
         if(msg->unconnectedClients[i] == 1)
@@ -103,7 +108,7 @@ void handleINIT(message *msg) {
     // setting client's ID
     ID = msg->clientID;
 
-    printf("Client registered!\n");
+    printf("Client registered! ID: %d\n", ID);
 }
 
 void handleMSG(message *msg) {
@@ -142,6 +147,9 @@ int receiveMessage(int useNOWAIT) {
     else if(msgBuffer->type == MSG)
         handleMSG(msgBuffer);
 
+    // freeing memory
+    free(msgBuffer);
+
     return toReturn;
 }
 
@@ -163,6 +171,9 @@ void sendDISCONNECT() {
 
     // sending DISCONNECT message to the server to make future connections possible
     if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send DISCONNECT");
+
+    // freeing memory
+    free(msg);
 }
 
 void sendLIST() {
@@ -220,6 +231,12 @@ void handleINTSignal(int signum) {
     sendSTOP();
 }
 
+void handleSEGVSignal(int signum) {
+    printf("Segmentation fault\n");
+    // terminating process after segmentation fault
+    sendSTOP();
+}
+
 void handleUSR1Signal(int signum) {
     // receiving all waiting messages after getting that signal
     while(receiveMessage(1) == 1) {}
@@ -227,9 +244,11 @@ void handleUSR1Signal(int signum) {
 
 void handleCommission(char *commission) {
     char *token = strtok(commission, " \n");
-    if(strcmp(token, "list") == 0)
+    if(strcmp(token, "stop") == 0)
+        sendSTOP();
+    else if(strcmp(token, "list") == 0)
         sendLIST();
-    if(strcmp(token, "connect") == 0) {
+    else if(strcmp(token, "connect") == 0) {
         token = strtok(NULL, commission);
 
         int toConnectID = (int) strtol(token, NULL, 10);
@@ -270,6 +289,9 @@ int main() {
     // deleting message queue in case of SIGINT signal
     if (signal(SIGINT, handleINTSignal) == SIG_ERR) perror("signal function error when setting SIGINT handler");
 
+    // to stop program properly in case of segmentation fault
+    if (signal(SIGSEGV, handleSEGVSignal) == SIG_ERR) perror("signal function error when setting SIGSEGV handler");
+
     // to make possible chat between clients
     if (signal(SIGUSR1, handleUSR1Signal) == SIG_ERR) perror("signal function error when setting SIGUSR1 handler");
 
@@ -294,11 +316,17 @@ int main() {
         if(connected == 0) {
             printf("Type commission:\n");
             getline(&text, &length, stdin);
-            handleCommission(text);
+            if(connected == 1)
+                textToInterlocutor(text);
+            else
+                handleCommission(text);
         }
         else {
             getline(&text, &length, stdin);
-            textToInterlocutor(text);
+            if(connected == 1)
+                textToInterlocutor(text);
+            else
+                handleCommission(text);
         }
 
         free(text);

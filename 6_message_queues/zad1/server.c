@@ -1,9 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <sys/wait.h>
-#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
@@ -41,9 +39,14 @@ void handleLIST(message *msg) {
     message *response = malloc(sizeof(message));
     response->type = LIST;
 
-    // copying array
-    for(int i=0; i<MAX_CLIENTS; i++)
+    // copying arrays
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clientsQueues[i] == -1)
+            response->allClients[i] = 0;
+        else
+            response->allClients[i] = 1;
         response->unconnectedClients[i] = unconnectedClients[i];
+    }
 
     // to not send requesting client as available to itself
     response->unconnectedClients[msg->clientID] = 0;
