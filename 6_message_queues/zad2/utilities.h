@@ -11,9 +11,7 @@
 
 #define SIZE 128
 #define MAX_CLIENTS  15
-#define PROJECT_ID 'A'
 
-#define RECEIVE_MTYPE -7
 #define MESSAGE_SIZE 128
 
 #define SERVER_QUEUE_NAME "/queue_server"
@@ -28,19 +26,5 @@ typedef enum mtype {
     INIT = 2,
     MSG = 1
 } mtype;
-
-
-struct message {
-    long type;
-    key_t queueKey;
-    pid_t clientPID;
-    int clientID;
-    int toConnectID;
-    int allClients[MAX_CLIENTS];
-    int unconnectedClients[MAX_CLIENTS];
-    char message[MESSAGE_SIZE];
-} typedef message;
-
-
 
 #endif

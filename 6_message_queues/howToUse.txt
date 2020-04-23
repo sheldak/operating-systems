@@ -1,0 +1,11 @@
+1. Type "make compile" in directory "zad1" or "zad2"
+2. Open a few terminals
+3. In EXACTLY one terminal type "make runserver"
+4. In up to 15 terminals type "make runclient"
+5. From client's terminal you can write commissions:
+a) "stop" - terminating client (you can use ctrl+C as well)
+b) "list" - you will get list of all clients and list of available to connect clients from server
+c) "connect ID", where ID is ID of other client (e.g. connect 3) - you will connect with client with ID equal
+to typed ID; now you can send message directly to that other client
+d) "disconnect" - when you are connected you can leave the conversation
+6. Terminate all clients and server by using "stop" or ctrl+C

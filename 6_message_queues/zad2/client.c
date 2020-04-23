@@ -1,8 +1,5 @@
 #include <unistd.h>
 #include <sys/wait.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/msg.h>
 #include <time.h>
 
 #include "utilities.h"
@@ -12,14 +9,12 @@ char *queueName;
 
 mqd_t serverQueueDesc = -1;
 
-int serverQueueID = -1;
-
 int ID = -1;
 
 int connected = 0;
 int interlocutorID = -1;
-int interlocutorQueueID = -1;
-int interlocutorPID = -1;
+char *interlocutorQueueName;
+int interlocutorQueueDesc = -1;
 
 char *getRandomName() {
     char *namePrefix = "/queue_";
@@ -77,41 +72,33 @@ void sendSTOP() {
 void handleDISCONNECT() {
     printf("Disconnected with %d\n", interlocutorID);
 
+    // closing interlocutor's message queue
+    if(mq_close(interlocutorQueueDesc) < 0) perror("Cannot close interlocutor's message queue");
+
     connected = 0;
     interlocutorID = -1;
-    interlocutorQueueID = -1;
-    interlocutorPID = -1;
+    interlocutorQueueDesc = -1;
 }
 
-void handleLIST(message *msg) {
-    printf("All clients: ");
-    for(int i=0; i<MAX_CLIENTS; i++) {
-        if(msg->allClients[i] == 1)
-            printf("%d ", i);
-    }
-    printf("\n");
+void handleLIST(char *message) {
+    for(int i=2; i<strlen(message); i++)
+        printf("%c", message[i]);
 
-    printf("You can connect with: ");
-    for(int i=0; i<MAX_CLIENTS; i++) {
-        if(msg->unconnectedClients[i] == 1)
-            printf("%d ", i);
-    }
     printf("\n\n");
 }
 
-void handleCONNECT(message *msg) {
+void handleCONNECT(char *message) {
+    int type;
+    sscanf(message, "%d %s %d", &type, interlocutorQueueName, &interlocutorID);
+
     // making connection
-    if(msg->clientPID != -1) {
-        printf("Connected with %d. Type \"disconnect\" to end the conversation\n\n", msg->clientID);
+    if(strcmp(interlocutorQueueName, "error") != 0) {
+        printf("Connected with %d. Type \"disconnect\" to end the conversation\n\n", interlocutorID);
         connected = 1;
-        interlocutorID = msg->clientID;
 
-        // getting interlocutor's message queue ID
-        interlocutorQueueID = msgget(msg->queueKey, 0666);
-        if(interlocutorQueueID == -1) perror("Cannot get interlocutor queue ID by msgget function");
-
-        // getting interlocutor's PID
-        interlocutorPID = msg->clientPID;
+        // getting interlocutor's message queue descriptor
+        interlocutorQueueDesc = mq_open(interlocutorQueueName, O_WRONLY);
+        if(interlocutorQueueDesc < 0) perror("Cannot open interlocutor's message queue");
     }
     // cannot make connection
     else
@@ -120,49 +107,42 @@ void handleCONNECT(message *msg) {
 
 void handleINIT(char *message) {
     int type;
-
     sscanf(message, "%d %d", &type, &ID);
 
     printf("Client registered! ID: %d\n", ID);
 }
 
-void handleMSG(message *msg) {
+void handleMSG(char *message) {
     // printing message
-    printf("THEM: %s\n", msg->message);
+    printf("THEM: ");
+    for(int i=2; i<strlen(message); i++)
+        printf("%c", message[i]);
+
+    printf("\n\n");
 }
 
-int receiveMessage(int useNOWAIT) {
-    // returns 1 if any message was handled
-    int toReturn = 1;
-
+void receiveMessage() {
     // creating message buffers
-    char *msgBuffer = malloc(sizeof(message));
+    char *msgBuffer = malloc(MESSAGE_SIZE * sizeof(char));
     unsigned int type;
 
-    // receiving message from server
-//    if(useNOWAIT == 1) {
-//        if(msgrcv(queueID, msgBuffer, MESSAGE_SIZE, RECEIVE_MTYPE, IPC_NOWAIT) < 0)
-//            toReturn = 0;
-//    }
-//    else {
     ssize_t messageSize = mq_receive(queueDesc, msgBuffer, MESSAGE_SIZE, &type);
     if(messageSize < 0)
         perror("Cannot receive any message");
-//    }
 
     // handling message
     if(type == STOP)
         sendSTOP();
-//    else if(msgBuffer->type == DISCONNECT)
-//        handleDISCONNECT();
-//    else if(msgBuffer->type == LIST)
-//        handleLIST(msgBuffer);
-//    else if(msgBuffer->type == CONNECT)
-//        handleCONNECT(msgBuffer);
+    else if(type == DISCONNECT)
+        handleDISCONNECT();
+    else if(type == LIST)
+        handleLIST(msgBuffer);
+    else if(type == CONNECT)
+        handleCONNECT(msgBuffer);
     else if(type == INIT)
         handleINIT(msgBuffer);
-//    else if(msgBuffer->type == MSG)
-//        handleMSG(msgBuffer);
+    else if(type == MSG)
+        handleMSG(msgBuffer);
 
     // freeing memory
     free(msgBuffer);
@@ -173,65 +153,46 @@ int receiveMessage(int useNOWAIT) {
     notification.sigev_signo = SIGUSR1;
 
     mq_notify(queueDesc, &notification);
-
-    return toReturn;
 }
 
 void sendDISCONNECT() {
-    // making DISCONNECT message for interlocutor and itself
-    message *msg = malloc(sizeof(message));
-    msg->type = DISCONNECT;
-    msg->clientID = ID;
-    msg->toConnectID = interlocutorID;
+    // making DISCONNECT message for interlocutor and server
+    char message[MESSAGE_SIZE];
+    sprintf(message, "%d %d %d", DISCONNECT, ID, interlocutorID);
 
     // sending DISCONNECT message to the interlocutor
-    if(msgsnd(interlocutorQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send DISCONNECT");
-
-    // sending signal to interlocutor to make it read the message in message queue
-    kill(interlocutorPID, SIGUSR1);
+    if(mq_send(interlocutorQueueDesc, message, MESSAGE_SIZE, DISCONNECT) < 0) perror("Cannot send DISCONNECT");
 
     // handling DISCONNECT message
     handleDISCONNECT();
 
     // sending DISCONNECT message to the server to make future connections possible
-    if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send DISCONNECT");
-
-    // freeing memory
-    free(msg);
+    if(mq_send(serverQueueDesc, message, MESSAGE_SIZE, DISCONNECT) < 0) perror("Cannot send DISCONNECT");
 }
 
-//void sendLIST() {
-//    // making LIST message for the server
-//    message *msg = malloc(sizeof(message));
-//    msg->type = LIST;
-//    msg->clientID = ID;
-//
-//    // sending LIST message to the server
-//    if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send LIST");
-//
-//    // receiving array with unconnected clients
-//    receiveMessage(0);
-//
-//    // freeing memory
-//    free(msg);
-//}
+void sendLIST() {
+    // creating LIST message
+    char message[MESSAGE_SIZE];
+    sprintf(message, "%d %d", LIST, ID);
 
-//void sendCONNECT(int toConnectID) {
-//    // making CONNECT message for the server
-//    message *msg = malloc(sizeof(message));
-//    msg->type = CONNECT;
-//    msg->clientID = ID;
-//    msg->toConnectID = toConnectID;
-//
-//    // sending CONNECT message to the server
-//    if(msgsnd(serverQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send CONNECT");
-//
-//    // receiving message with the other client message queue ID and PID
-//    receiveMessage(0);
-//
-//    // freeing memory
-//    free(msg);
-//}
+    // sending LIST message to the server
+    if(mq_send(serverQueueDesc, message, MESSAGE_SIZE, LIST) < 0) perror("Cannot send LIST");
+
+    // receiving arrays
+    receiveMessage();
+}
+
+void sendCONNECT(int toConnectID) {
+    // creating CONNECT message
+    char message[MESSAGE_SIZE];
+    sprintf(message, "%d %d %d", CONNECT, ID, toConnectID);
+
+    // sending CONNECT message to the server
+    if(mq_send(serverQueueDesc, message, MESSAGE_SIZE, CONNECT) < 0) perror("Cannot send CONNECT");
+
+    // receiving message with the other client message queue ID and PID
+    receiveMessage();
+}
 
 void registerClient() {
     // creating INIT message
@@ -242,7 +203,16 @@ void registerClient() {
     if(mq_send(serverQueueDesc, message, MESSAGE_SIZE, INIT) < 0) perror("Cannot send INIT");
 
     // handling message
-    receiveMessage(0);
+    receiveMessage();
+}
+
+void sendMSG(char *text) {
+    // creating MSG message
+    char message[MESSAGE_SIZE];
+    sprintf(message, "%d %s", MSG, text);
+
+    // sending MSG message to the server
+    if(mq_send(interlocutorQueueDesc, message, MESSAGE_SIZE, MSG) < 0) perror("Cannot send MSG");
 }
 
 void handleINTSignal(int signum) {
@@ -257,43 +227,34 @@ void handleSEGVSignal(int signum) {
 }
 
 void handleUSR1Signal(int signum) {
-    receiveMessage(0);
+    receiveMessage();
 }
 
+void handleCommission(char *commission) {
+    char *token = strtok(commission, " \n");
+    if(strcmp(token, "stop") == 0)
+        sendSTOP();
+    else if(strcmp(token, "list") == 0)
+        sendLIST();
+    else if(strcmp(token, "connect") == 0) {
+        token = strtok(NULL, commission);
 
-//void handleCommission(char *commission) {
-//    char *token = strtok(commission, " \n");
-//    if(strcmp(token, "stop") == 0)
-//        sendSTOP();
-//    else if(strcmp(token, "list") == 0)
-//        sendLIST();
-//    else if(strcmp(token, "connect") == 0) {
-//        token = strtok(NULL, commission);
-//
-//        int toConnectID = (int) strtol(token, NULL, 10);
-//        sendCONNECT(toConnectID);
-//    }
-//}
-//
-//void textToInterlocutor(char *text) {
-//    if(strcmp(text, "disconnect\n") == 0)
-//        sendDISCONNECT();
-//    else {
-//        // printing sent message
-//        printf("ME: %s\n", text);
-//
-//        // creating MSG message
-//        message *msg = malloc(sizeof(message));
-//        msg->type = MSG;
-//        strcpy(msg->message, text);
-//
-//        // sending MSG message to interlocutor
-//        if(msgsnd(interlocutorQueueID, msg, MESSAGE_SIZE, 0) < 0) perror("Cannot send MSG");
-//
-//        // sending signal to interlocutor to make it read message from message queue
-//        kill(interlocutorPID, SIGUSR1);
-//    }
-//}
+        int toConnectID = (int) strtol(token, NULL, 10);
+        sendCONNECT(toConnectID);
+    }
+}
+
+void textToInterlocutor(char *text) {
+    if(strcmp(text, "disconnect\n") == 0)
+        sendDISCONNECT();
+    else {
+        // printing sent message
+        printf("ME: %s\n", text);
+
+        // creating MSG message
+        sendMSG(text);
+    }
+}
 
 int main() {
     srand(time(NULL));
@@ -316,6 +277,9 @@ int main() {
     // to receive message when got SIGUSR1 signal
     if (signal(SIGUSR1, handleUSR1Signal) == SIG_ERR) perror("signal function error when setting SIGUSR1 handler");
 
+    // initializing interlocutor queue
+    interlocutorQueueName = malloc(MESSAGE_SIZE * sizeof(char));
+
     // creating message queue
     struct mq_attr attributes;
     attributes.mq_flags = 0;
@@ -323,11 +287,9 @@ int main() {
     attributes.mq_msgsize = MESSAGE_SIZE;
     attributes.mq_curmsgs = 0;
 
-
     queueName = getRandomName();
     queueDesc = mq_open(queueName, O_RDONLY | O_CREAT | O_EXCL, 0666, &attributes);
     if(queueDesc < 0) perror("Cannot create message queue");
-
 
     // opening server queue
     openServerQueue();
@@ -336,26 +298,26 @@ int main() {
     registerClient();
 
     while(1) {
-//        char *text = malloc(SIZE * sizeof(char));
-//        size_t length = 0;
-//
-//        if(connected == 0) {
-//            printf("Type commission:\n");
-//            getline(&text, &length, stdin);
-//            if(connected == 1)
-//                textToInterlocutor(text);
-//            else
-//                handleCommission(text);
-//        }
-//        else {
-//            getline(&text, &length, stdin);
-//            if(connected == 1)
-//                textToInterlocutor(text);
-//            else
-//                handleCommission(text);
-//        }
-//
-//        free(text);
+        char *text = malloc(SIZE * sizeof(char));
+        size_t length = 0;
+
+        if(connected == 0) {
+            printf("Type commission:\n");
+            getline(&text, &length, stdin);
+            if(connected == 1)
+                textToInterlocutor(text);
+            else
+                handleCommission(text);
+        }
+        else {
+            getline(&text, &length, stdin);
+            if(connected == 1)
+                textToInterlocutor(text);
+            else
+                handleCommission(text);
+        }
+
+        free(text);
     }
 
 

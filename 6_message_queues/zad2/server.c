@@ -1,11 +1,8 @@
 #include <sys/wait.h>
 #include <sys/types.h>
-#include <sys/ipc.h>
 #include <sys/msg.h>
 
 #include "utilities.h"
-
-// cd dev/c/operating_systems/6_message_queues/zad2
 
 mqd_t queueDesc = -1;
 char *clientsQueueNames[MAX_CLIENTS];
@@ -32,73 +29,88 @@ void handleSTOP(char *message) {
     }
 }
 
-//void handleDISCONNECT(message *msg) {
-//    unconnectedClients[msg->clientID] = 1;
-//    unconnectedClients[msg->toConnectID] = 1;
-//
-//    printf("%d and %d disconnected\n", msg->clientID, msg->toConnectID);
-//}
-//
-//void handleLIST(message *msg) {
-//    // message which will be send to the new client
-//    message *response = malloc(sizeof(message));
-//    response->type = LIST;
-//
-//    // copying arrays
-//    for(int i=0; i<MAX_CLIENTS; i++) {
-//        if(clientsQueues[i] == -1)
-//            response->allClients[i] = 0;
-//        else
-//            response->allClients[i] = 1;
-//        response->unconnectedClients[i] = unconnectedClients[i];
-//    }
-//
-//    // to not send requesting client as available to itself
-//    response->unconnectedClients[msg->clientID] = 0;
-//
-//    if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0) perror("Cannot send LIST");
-//}
-//
-//void handleCONNECT(message *msg) {
-//    // messages which will be send to clients
-//    message *response = malloc(sizeof(message));
-//    response->type = CONNECT;
-//
-//    // checking if client to connect exists and is a different client
-//    if(unconnectedClients[msg->toConnectID] == 1 && msg->clientID != msg->toConnectID) {
-//        // sending queue key and PID to the client which sent CONNECT commission
-//        response->queueKey = clientsQueueKeys[msg->toConnectID];
-//        response->clientPID = clientsPIDs[msg->toConnectID];
-//        response->clientID = msg->toConnectID;
-//
-//        if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0)
-//            perror("Cannot send CONNECT to first client");
-//
-//        // sending queue key and PID to the client with whom previous client want to connect
-//        response->queueKey = clientsQueueKeys[msg->clientID];
-//        response->clientPID = clientsPIDs[msg->clientID];
-//        response->clientID = msg->clientID;
-//
-//        if(msgsnd(clientsQueues[msg->toConnectID], response, MESSAGE_SIZE, 0) < 0)
-//            perror("Cannot send CONNECT to second client");
-//
-//        // sending signal to second client to make it read message
-//        kill(clientsPIDs[msg->toConnectID], SIGUSR1);
-//
-//        // marking clients as unreachable
-//        unconnectedClients[msg->clientID] = 0;
-//        unconnectedClients[msg->toConnectID] = 0;
-//
-//        printf("%d and %d connected\n", msg->clientID, msg->toConnectID);
-//    }
-//    else {
-//        // sending PID = -1 as a flag to the requesting client because it has sent invalid client ID
-//        response->clientPID = -1;
-//
-//        if(msgsnd(clientsQueues[msg->clientID], response, MESSAGE_SIZE, 0) < 0)
-//            perror("Cannot send CONNECT to client when there is no client with passed ID");
-//    }
-//}
+void handleDISCONNECT(char *message) {
+    int type;
+    int client1ID;
+    int client2ID;
+    sscanf(message, "%d %d %d", &type, &client1ID, &client2ID);
+
+    unconnectedClients[client1ID] = 1;
+    unconnectedClients[client2ID] = 1;
+
+    printf("%d and %d disconnected\n", client1ID, client2ID);
+}
+
+void handleLIST(char *message) {
+    int type;
+    int clientID;
+    sscanf(message, "%d %d", &type, &clientID);
+
+    // response to client
+    char response[MESSAGE_SIZE];
+    sprintf(response, "%d ", LIST);
+
+    strcat(response, "All clients: ");
+
+    // copying array with all clients
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(clientsQueuesDesc[i] != -1) {
+            char *nextClient = calloc(3, sizeof(char));
+            sprintf(nextClient, "%d ", i);
+            strcat(response, nextClient);
+        }
+    }
+
+    strcat(response, "\nYou can connect with: ");
+
+    // copying array with all reachable clients
+    for(int i=0; i<MAX_CLIENTS; i++) {
+        if(unconnectedClients[i] == 1 && i != clientID) {
+            char *nextClient = calloc(3, sizeof(char));
+            sprintf(nextClient, "%d ", i);
+            strcat(response, nextClient);
+        }
+    }
+
+    // sending LIST message to the client
+    if(mq_send(clientsQueuesDesc[clientID], response, MESSAGE_SIZE, LIST) < 0) perror("Cannot send LIST");
+}
+
+void handleCONNECT(char *message) {
+    int type;
+    int clientID;
+    int interlocutorID;
+    sscanf(message, "%d %d %d", &type, &clientID, &interlocutorID);
+
+    // checking if client to connect exists and is a different client
+    if(unconnectedClients[interlocutorID] == 1 && clientID != interlocutorID) {
+        // sending queue name and ID to the client which sent CONNECT commission
+        char response1[MESSAGE_SIZE];
+        sprintf(response1, "%d %s %d", CONNECT, clientsQueueNames[interlocutorID], interlocutorID);
+        if(mq_send(clientsQueuesDesc[clientID], response1, MESSAGE_SIZE, CONNECT) < 0)
+            perror("Cannot send CONNECT");
+
+
+        // sending queue name and ID to the client with whom previous client want to connect
+        char response2[MESSAGE_SIZE];
+        sprintf(response2, "%d %s %d", CONNECT, clientsQueueNames[clientID], clientID);
+        if(mq_send(clientsQueuesDesc[interlocutorID], response2, MESSAGE_SIZE, CONNECT) < 0)
+            perror("Cannot send CONNECT");
+
+        // marking clients as unreachable
+        unconnectedClients[clientID] = 0;
+        unconnectedClients[interlocutorID] = 0;
+
+        printf("%d and %d connected\n", clientID, interlocutorID);
+    }
+    else {
+        // sending "error" as a flag to the requesting client because it has sent invalid interlocutor ID
+        char response[MESSAGE_SIZE];
+        sprintf(response, "%d %s %d", CONNECT, "error", -1);
+        if(mq_send(clientsQueuesDesc[clientID], response, MESSAGE_SIZE, CONNECT) < 0)
+            perror("Cannot send CONNECT to client when there is no client with passed ID");
+    }
+}
 
 void handleINIT(char *message) {
     // getting message contents
@@ -149,12 +161,12 @@ void handleINIT(char *message) {
 void handleMessage(char *message, mtype type) {
     if(type == STOP)
         handleSTOP(message);
-//    else if(msg->type == DISCONNECT)
-//        handleDISCONNECT(msg);
-//    else if(msg->type == LIST)
-//        handleLIST(msg);
-//    else if(msg->type == CONNECT)
-//        handleCONNECT(msg);
+    else if(type == DISCONNECT)
+        handleDISCONNECT(message);
+    else if(type == LIST)
+        handleLIST(message);
+    else if(type == CONNECT)
+        handleCONNECT(message);
     else if(type == INIT)
         handleINIT(message);
 }
@@ -238,12 +250,7 @@ int main() {
     queueDesc = mq_open(SERVER_QUEUE_NAME, O_RDONLY | O_CREAT | O_EXCL, 0666, &attributes);
     if(queueDesc < 0) perror("Cannot create message queue");
 
-//
-//    // getting ID of message queue
-//    queueID = msgget(queueKey, 0666 | IPC_CREAT | IPC_EXCL);
-//    if(queueID == -1) perror("Cannot get queue ID by msgget function");
-//
-//    // handling messages from clients
+    // handling messages from clients
     while(1) {
         receiveMessage();
     }
