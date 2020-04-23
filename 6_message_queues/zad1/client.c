@@ -136,7 +136,7 @@ int receiveMessage(int useNOWAIT) {
     // handling message
     if(msgBuffer->type == STOP)
         sendSTOP();
-    if(msgBuffer->type == DISCONNECT)
+    else if(msgBuffer->type == DISCONNECT)
         handleDISCONNECT();
     else if(msgBuffer->type == LIST)
         handleLIST(msgBuffer);
