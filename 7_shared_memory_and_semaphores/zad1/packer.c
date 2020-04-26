@@ -1,4 +1,4 @@
-#include "utilities.h"
+#include "utilities.c"
 
 void terminate() {
 //    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");

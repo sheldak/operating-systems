@@ -1,6 +1,6 @@
-#include "utilities.h"
+#include "utilities.c"
 
-int semaphoresID = -1;
+int semaphoreID = -1;
 int memoryID = -1;
 
 sharedVariables *memoryAddress;
@@ -14,14 +14,16 @@ pid_t *packersPIDs;
 pid_t *sendersPIDs;
 
 
-sharedVariables *getInitialSharedVariables(int arraySize) {
-    sharedVariables *shared = malloc(sizeof(sharedVariables));
-    shared->arraySize = arraySize;
-    shared->array = calloc(arraySize, sizeof(int));
-    shared->firstToPrepare = 0;
-    shared->lastToPrepare = 0;
-    shared->firstToSend = 0;
-    shared->lastToSend = 0;
+sharedVariables getInitialSharedVariables() {
+    sharedVariables shared;
+
+    for(int i=0; i<ARRAY_SIZE; i++)
+        shared.array[i] = 0;
+
+    shared.firstToPrepare = 0;
+    shared.ordersToPrepare = 0;
+    shared.firstToSend = ARRAY_SIZE/2;
+    shared.ordersToSend = 0;
 
     return shared;
 }
@@ -40,7 +42,7 @@ void stopWorkers() {
 void terminate() {
     stopWorkers();
 
-    if(semctl(semaphoresID, 0, IPC_RMID) < 0) perror("Cannot delete semaphore");
+    if(semctl(semaphoreID, 0, IPC_RMID) < 0) perror("Cannot delete semaphore");
     else printf("Semaphores deleted successfully\n");
 
     memoryAddress = shmat(memoryID, NULL, 0);
@@ -66,7 +68,7 @@ void handleINTSignal(int signum) {
 }
 
 int main(int argc, char **argv) {
-    if(argc < 5) perror("Too few arguments");
+    if(argc < 4) perror("Too few arguments");
 
     // deleting semaphores and shared memory before process termination
     if(atexit(terminate) != 0) perror("atexit function error");
@@ -77,45 +79,42 @@ int main(int argc, char **argv) {
     // to stop program properly in case of SIGINT signal
     if (signal(SIGINT, handleINTSignal) == SIG_ERR) perror("signal function error when setting SIGINT handler");
 
-    // first argument - size of the shared array
+    // first argument - number of receivers
     char *rest;
-    int sharedArraySize = (int) strtol(argv[1], &rest, 10);
+    receivers = (int) strtol(argv[1], &rest, 10);
 
-    // second argument - number of receivers
-    receivers = (int) strtol(argv[2], &rest, 10);
+    // second argument - number of packers
+    packers = (int) strtol(argv[2], &rest, 10);
 
-    // third argument - number of packers
-    packers = (int) strtol(argv[3], &rest, 10);
-
-    // forth argument - number of senders
-    senders = (int) strtol(argv[4], &rest, 10);
+    // third argument - number of senders
+    senders = (int) strtol(argv[3], &rest, 10);
 
     // getting key for semaphore
     key_t semaphoreKey = ftok( getenv("HOME"), SEMAPHORE_ID);
-    if(semaphoreKey == -1) perror("Cannot get key for semaphore by ftok function");
+    if(semaphoreKey == -1) perror("Cannot get key for semaphore for main process by ftok function");
 
     // getting semaphore ID
-    semaphoresID = semget(semaphoreKey, 1, 0666 | IPC_CREAT |  IPC_EXCL);
+    semaphoreID = semget(semaphoreKey, 1, 0666 | IPC_CREAT |  IPC_EXCL);
 
     // setting semaphore value
-    if(semctl(semaphoresID, 0, SETVAL, 1) < 0) perror("Cannot set semaphore");
+    if(semctl(semaphoreID, 0, SETVAL, 1) < 0) perror("Cannot set semaphore");
 
     // getting key for shared memory
     key_t memoryKey = ftok( getenv("HOME"), MEMORY_ID);
     if(memoryKey == -1) perror("Cannot get key for shared memory by ftok function");
 
     // creating shared structure
-    sharedVariables *initialShared = getInitialSharedVariables(sharedArraySize);
+    sharedVariables initialShared = getInitialSharedVariables();
 
     // getting shared memory ID
-    memoryID = shmget(memoryKey, sizeof(&initialShared), 0666 | IPC_CREAT |  IPC_EXCL);
+    memoryID = shmget(memoryKey, sizeof(sharedVariables), 0666 | IPC_CREAT |  IPC_EXCL);
 
     // getting address of shared memory
     memoryAddress = shmat(memoryID, NULL, 0);
     if(memoryAddress == (sharedVariables *) (-1)) perror("Cannot get address");
 
     // make shared memory an initialized sharedVariables structure
-    memoryAddress = initialShared;
+    *memoryAddress = initialShared;
 
     // preparing arrays with worker's PIDs
     receiversPIDs = calloc(receivers, sizeof(pid_t));

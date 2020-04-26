@@ -1,14 +1,22 @@
-#include "utilities.h"
+#include "utilities.c"
+
+int semaphoresID = -1;
+int memoryID = -1;
+
+void *memoryAddress;
+sharedVariables *shared;
+
 
 void terminate() {
-//    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
-//    else printf("Shared memory detached successfully from receiver process\n");
+    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
+    else printf("Shared memory detached successfully from receiver process\n");
 
     exit(0);
 }
 
 void handleSEGVSignal(int signum) {
     printf("Segmentation fault\n");
+
     // terminating process after segmentation fault
     exit(0);
 }
@@ -18,7 +26,34 @@ void handleINTSignal(int signum) {
     exit(0);
 }
 
+void receive() {
+    // getting number to write to the shared array
+    int randomNumber = rand()%MAX_NUMBER + 1;
+
+    // decrementing semaphore
+    decrementSemaphore(semaphoresID);
+
+    // checking if there is room for new order in the array
+    if(shared->ordersToPrepare + shared->ordersToSend < ARRAY_SIZE &&
+            (shared->firstToPrepare + shared->ordersToPrepare) % ARRAY_SIZE < shared->firstToSend) {
+
+        // writing number (order) to the array
+        shared->array[(shared->firstToPrepare + shared->ordersToPrepare) % ARRAY_SIZE] = randomNumber;
+        shared->ordersToPrepare++;
+
+        // printing current status of the orders
+        printf("%d %s\n", getpid(), getCurrentTime());
+        printf("Added number: %d. Orders to prepare: %d. Orders to send: %d.\n\n",
+                randomNumber, shared->ordersToPrepare, shared->ordersToSend);
+    }
+
+    // incrementing semaphore
+    incrementSemaphore(semaphoresID);
+}
+
 int main() {
+    srand(time(NULL));
+
     // detaching memory before process termination
     if(atexit(terminate) != 0) perror("atexit function error");
 
@@ -28,9 +63,18 @@ int main() {
     // to stop program properly in case of SIGINT signal
     if (signal(SIGINT, handleINTSignal) == SIG_ERR) perror("signal function error when setting SIGINT handler");
 
-    while(1) {}
+    // getting semaphore ID
+    semaphoresID = openSemaphore();
 
-    printf("Hello");
+    // getting shared memory address
+    memoryAddress = openSharedMemory();
+
+    // converting address to shared structure
+    shared = (sharedVariables*) memoryAddress;
+
+    while(1) {
+        receive();
+    }
 
     return 0;
 }

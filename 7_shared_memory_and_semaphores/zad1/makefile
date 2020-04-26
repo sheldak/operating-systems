@@ -13,4 +13,4 @@ clean:
 		rm sender
 
 run:
-		./main 20 1 1 1
+		./main 1 1 1
