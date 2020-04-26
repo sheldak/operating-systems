@@ -1,14 +1,18 @@
 #include "utilities.h"
 
 char *getCurrentTime() {
+    // getting time in seconds and microseconds
     struct timeval currTime;
     gettimeofday(&currTime, NULL);
 
+    // changing microseconds to milliseconds
     int milliseconds = (int) currTime.tv_usec / 1000;
 
+    // saving day and time (just hours, minutes and seconds) to char array
     char timeWithoutMilliseconds[100];
     strftime(timeWithoutMilliseconds, 100, "%Y-%m-%d %H:%M:%S", localtime(&currTime.tv_sec));
 
+    // making one char array for time containing milliseconds
     char *time = calloc(100, sizeof(char));
     sprintf(time, "%s:%03d", timeWithoutMilliseconds, milliseconds);
 

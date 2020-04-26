@@ -1,10 +1,10 @@
 CC = gcc -Wall -std=c11 -D_DEFAULT_SOURCE -D_GNU_SOURCE
 
 compile:
-		$(CC) -o main main.c -lrt
-		$(CC) -o receiver receiver.c -lrt
-		$(CC) -o packer packer.c -lrt
-		$(CC) -o sender sender.c -lrt
+		$(CC) -o main main.c
+		$(CC) -o receiver receiver.c
+		$(CC) -o packer packer.c
+		$(CC) -o sender sender.c
 
 clean:
 		rm main
@@ -13,4 +13,4 @@ clean:
 		rm sender
 
 run:
-		./main 1 1 1
+		./main 5 3 3

@@ -37,6 +37,15 @@ void stopWorkers() {
 
     for(int i=0; i<senders; i++)
         kill(sendersPIDs[i], SIGINT);
+
+    for(int i=0; i<receivers; i++)
+        waitpid(receiversPIDs[i], NULL, 0);
+
+    for(int i=0; i<packers; i++)
+        waitpid(packersPIDs[i], NULL, 0);
+
+    for(int i=0; i<senders; i++)
+        waitpid(sendersPIDs[i], NULL, 0);
 }
 
 void terminate() {
@@ -68,6 +77,11 @@ void handleINTSignal(int signum) {
 }
 
 int main(int argc, char **argv) {
+    if (setvbuf(stdout, NULL, _IONBF, 0) != 0) {
+        printf("Error: buffering mode could not be changed!\n");
+        exit(1);
+    }
+
     if(argc < 4) perror("Too few arguments");
 
     // deleting semaphores and shared memory before process termination
@@ -151,41 +165,7 @@ int main(int argc, char **argv) {
         sendersPIDs[i] = pid;
     }
 
-    sleep(1);
-
-//    int val = semctl(semaphoresID, 0, GETVAL);
-//
-//    if(val < 0) perror("Cannot read semaphore");
-
-//    printf("%d\n", val);
-
-
-
-//    // getting key for shared memory
-//    memoryKey = ftok( getenv("HOME"), MEMORY_ID);
-//    if(memoryKey == -1) perror("Cannot get key by ftok function");
-//
-//    int memoryID = shmget(memoryKey, 10 * sizeof(int), 0666 | IPC_CREAT |  IPC_EXCL);
-////    printf("%d\n", semaphoresID);
-//
-//    int *memoryAddress = shmat(memoryID, NULL, 0);
-//    if(memoryAddress == (int *) (-1)) perror("Cannot get address");
-
-//    sharedVariables *sharedVars;
-//    sharedVars = memoryAddress;
-
-//    *shared = 3;
-//    *shared++;
-//    *shared = 5;
-
-//    printf("%d", *memoryAddress++);
-//    printf("%d", *memoryAddress--);
-
-//    if(semctl(semaphoresID, 11, IPC_RMID) < 0) perror("Cannot delete semaphore");
-//
-//    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
-//
-//    if(shmctl(memoryID, IPC_RMID, NULL) < 0) perror("Cannot delete shared memory segment");
+   while(1) {}
 
     return 0;
 }
