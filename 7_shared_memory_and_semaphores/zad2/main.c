@@ -1,3 +1,5 @@
+/* To stop the program use CTRL+C */
+
 #include "utilities.c"
 
 sem_t *semaphoreAddress;

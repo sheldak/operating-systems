@@ -1,3 +1,5 @@
+/* To stop the program use CTRL+C */
+
 #include "utilities.c"
 
 int semaphoreID = -1;
@@ -49,15 +51,18 @@ void stopWorkers() {
 }
 
 void terminate() {
+    // stopping all workers
     stopWorkers();
 
+    // deleting semaphores
     if(semctl(semaphoreID, 0, IPC_RMID) < 0) perror("Cannot delete semaphore");
     else printf("\nSemaphores deleted successfully\n");
 
+    // detaching shared memory
     memoryAddress = shmat(memoryID, NULL, 0);
-
     if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
 
+    // deleting shared memory
     if(shmctl(memoryID, IPC_RMID, NULL) < 0) perror("Cannot delete shared memory segment");
     else printf("Shared memory deleted successfully\n");
 
@@ -66,6 +71,7 @@ void terminate() {
 
 void handleSEGVSignal(int signum) {
     printf("Segmentation fault\n");
+
     // terminating process after segmentation fault
     exit(0);
 }
