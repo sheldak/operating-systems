@@ -37,15 +37,17 @@ void send() {
     // checking if there is any order to send
     if(shared->ordersToSend > 0) {
         // getting order to send
-        int number = shared->array[shared->firstToSend];
+        int toSend = 0;
+        while(shared->array[toSend].packed == 0)
+            toSend++;
+
+        // getting order
+        int number = 3 * shared->array[toSend].number;
 
         // removing order from array
-        shared->array[shared->firstToSend] = 0;
-        shared->firstToSend = (shared->firstToSend + 1) % ARRAY_SIZE;
+        shared->array[toSend].number = 0;
+        shared->array[toSend].packed = 0;
         shared->ordersToSend--;
-
-        // preparing order for the courier
-        number *= 3;
 
         // printing current status of the orders
         printf("%d %s\n", getpid(), getCurrentTime());

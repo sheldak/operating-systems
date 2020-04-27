@@ -1,8 +1,6 @@
 #include "utilities.c"
 
-int semaphoreID = -1;
-int memoryID = -1;
-
+sem_t *semaphoreAddress;
 sharedVariables *memoryAddress;
 
 int receivers = -1;
@@ -51,14 +49,18 @@ void stopWorkers() {
 void terminate() {
     stopWorkers();
 
-    if(semctl(semaphoreID, 0, IPC_RMID) < 0) perror("Cannot delete semaphore");
-    else printf("\nSemaphores deleted successfully\n");
+    // closing semaphore
+    if(sem_close(semaphoreAddress) < 0) perror("Cannot close semaphore in main process");
 
-    memoryAddress = shmat(memoryID, NULL, 0);
+    // deleting semaphore
+    if(sem_unlink(SEMAPHORE_NAME) < 0) perror("Cannot delete semaphore");
+    else printf("\nSemaphore deleted successfully\n");
 
-    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
+    // detaching shared memory
+    if(munmap(memoryAddress, sizeof(sharedVariables)) < 0) perror("Cannot detach memory in main process");
 
-    if(shmctl(memoryID, IPC_RMID, NULL) < 0) perror("Cannot delete shared memory segment");
+    // deleting shared memory
+    if(shm_unlink(MEMORY_NAME) < 0) perror("Cannot delete shared memory");
     else printf("Shared memory deleted successfully\n");
 
     exit(0);
@@ -102,29 +104,23 @@ int main(int argc, char **argv) {
     // third argument - number of senders
     senders = (int) strtol(argv[3], &rest, 10);
 
-    // getting key for semaphore
-    key_t semaphoreKey = ftok( getenv("HOME"), SEMAPHORE_ID);
-    if(semaphoreKey == -1) perror("Cannot get key for semaphore for main process by ftok function");
+    // creating semaphore
+    semaphoreAddress = sem_open(SEMAPHORE_NAME, O_CREAT | O_EXCL, 0666, 1);
+    if(semaphoreAddress == SEM_FAILED) perror("Cannot create semaphore");
 
-    // getting semaphore ID
-    semaphoreID = semget(semaphoreKey, 1, 0666 | IPC_CREAT |  IPC_EXCL);
+    // creating segment of shared memory
+    int memoryDescriptor = shm_open(MEMORY_NAME, O_RDWR | O_CREAT | O_EXCL,0666);
+    if(memoryDescriptor < 0) perror("Cannot create shared memory");
 
-    // setting semaphore value
-    if(semctl(semaphoreID, 0, SETVAL, 1) < 0) perror("Cannot set semaphore");
+    // specifying size of the shared memory
+    if(ftruncate(memoryDescriptor, sizeof(sharedVariables)) < 0) perror("Cannot truncate memory");
 
-    // getting key for shared memory
-    key_t memoryKey = ftok( getenv("HOME"), MEMORY_ID);
-    if(memoryKey == -1) perror("Cannot get key for shared memory by ftok function");
+    // attaching shared memory
+    memoryAddress = mmap(NULL, sizeof(sharedVariables), PROT_WRITE, MAP_SHARED, memoryDescriptor, 0);
+    if(memoryAddress == (sharedVariables *) (-1)) perror("Cannot get address of shared memory by the main process");
 
     // creating shared structure
     sharedVariables initialShared = getInitialSharedVariables();
-
-    // getting shared memory ID
-    memoryID = shmget(memoryKey, sizeof(sharedVariables), 0666 | IPC_CREAT |  IPC_EXCL);
-
-    // getting address of shared memory
-    memoryAddress = shmat(memoryID, NULL, 0);
-    if(memoryAddress == (sharedVariables *) (-1)) perror("Cannot get address");
 
     // make shared memory an initialized sharedVariables structure
     *memoryAddress = initialShared;

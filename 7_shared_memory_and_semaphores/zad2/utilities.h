@@ -5,23 +5,24 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
-#include <mqueue.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <sys/stat.h>
-#include <sys/sem.h>
 #include <sys/ipc.h>
 #include <sys/types.h>
 #include <sys/shm.h>
 #include <sys/time.h>
-
-#define SEMAPHORE_ID 'A'
-#define MEMORY_ID 'A'
+#include <semaphore.h>
+#include <pthread.h>
+#include <sys/mman.h>
 
 #define ARRAY_SIZE 20
 #define MAX_NUMBER 100
+
+#define SEMAPHORE_NAME "/semaphore"
+#define MEMORY_NAME "/shared_memory"
 
 struct order {
     int number;
@@ -35,9 +36,9 @@ struct sharedVariables {
 } typedef sharedVariables;
 
 char *getCurrentTime();
-int openSemaphore();
+sem_t *openSemaphore();
 void *openSharedMemory();
-void decrementSemaphore(int semaphoreID);
-void incrementSemaphore(int semaphoreID);
+void decrementSemaphore(sem_t *semaphoreAddress);
+void incrementSemaphore(sem_t *semaphoreAddress);
 
 #endif

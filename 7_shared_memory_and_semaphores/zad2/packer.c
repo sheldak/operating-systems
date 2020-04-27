@@ -1,14 +1,17 @@
 #include "utilities.c"
 
-int semaphoresID = -1;
-int memoryID = -1;
-
+sem_t *semaphoreAddress;
 void *memoryAddress;
+
 sharedVariables *shared;
 
 
 void terminate() {
-    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
+    // closing semaphore
+    if(sem_close(semaphoreAddress) < 0) perror("Cannot close semaphore in packer process");
+
+    // detaching shared memory
+    if(munmap(memoryAddress, sizeof(sharedVariables)) < 0) perror("Cannot detach memory in packer process");
 
     exit(0);
 }
@@ -27,7 +30,7 @@ void handleINTSignal(int signum) {
 
 void pack() {
     // decrementing semaphore
-    decrementSemaphore(semaphoresID);
+    decrementSemaphore(semaphoreAddress);
 
     // checking if there is any order to pack
     if(shared->ordersToPrepare > 0) {
@@ -50,7 +53,9 @@ void pack() {
     }
 
     // incrementing semaphore
-    incrementSemaphore(semaphoresID);
+    incrementSemaphore(semaphoreAddress);
+    usleep(1000);
+
 }
 
 int main() {
@@ -68,8 +73,8 @@ int main() {
     // to stop process properly in case of SIGINT signal
     if (signal(SIGINT, handleINTSignal) == SIG_ERR) perror("signal function error when setting SIGINT handler");
 
-    // getting semaphore ID
-    semaphoresID = openSemaphore();
+    // getting semaphore address
+    semaphoreAddress = openSemaphore();
 
     // getting shared memory address
     memoryAddress = openSharedMemory();

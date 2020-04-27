@@ -1,14 +1,17 @@
 #include "utilities.c"
 
-int semaphoresID = -1;
-int memoryID = -1;
-
+sem_t *semaphoreAddress;
 void *memoryAddress;
+
 sharedVariables *shared;
 
 
 void terminate() {
-    if(shmdt(memoryAddress) < 0) perror("Cannot detach memory");
+    // closing semaphore
+    if(sem_close(semaphoreAddress) < 0) perror("Cannot close semaphore in sender process");
+
+    // detaching shared memory
+    if(munmap(memoryAddress, sizeof(sharedVariables)) < 0) perror("Cannot detach memory in sender process");
 
     exit(0);
 }
@@ -25,32 +28,34 @@ void handleINTSignal(int signum) {
     exit(0);
 }
 
-void pack() {
+void send() {
     // decrementing semaphore
-    decrementSemaphore(semaphoresID);
+    decrementSemaphore(semaphoreAddress);
 
-    // checking if there is any order to pack
-    if(shared->ordersToPrepare > 0) {
-        // getting order to pack
-        int toPack = 0;
-        while(shared->array[toPack].number == 0 || shared->array[toPack].packed == 1)
-            toPack++;
+    // checking if there is any order to send
+    if(shared->ordersToSend > 0) {
+        // getting order to send
+        int toSend = 0;
+        while(shared->array[toSend].packed == 0)
+            toSend++;
 
-        // packing order
-        shared->array[toPack].number *= 2;
-        shared->array[toPack].packed = 1;
+        // getting order
+        int number = 3 * shared->array[toSend].number;
 
-        shared->ordersToPrepare--;
-        shared->ordersToSend++;
+        // removing order from array
+        shared->array[toSend].number = 0;
+        shared->array[toSend].packed = 0;
+        shared->ordersToSend--;
 
         // printing current status of the orders
         printf("%d %s\n", getpid(), getCurrentTime());
-        printf("Prepared order: %d. Orders to prepare: %d. Orders to send: %d.\n\n",
-               shared->array[toPack].number, shared->ordersToPrepare, shared->ordersToSend);
+        printf("Sent order: %d. Orders to prepare: %d. Orders to send: %d.\n\n",
+               number, shared->ordersToPrepare, shared->ordersToSend);
     }
 
     // incrementing semaphore
-    incrementSemaphore(semaphoresID);
+    incrementSemaphore(semaphoreAddress);
+    usleep(1000);
 }
 
 int main() {
@@ -68,8 +73,8 @@ int main() {
     // to stop process properly in case of SIGINT signal
     if (signal(SIGINT, handleINTSignal) == SIG_ERR) perror("signal function error when setting SIGINT handler");
 
-    // getting semaphore ID
-    semaphoresID = openSemaphore();
+    // getting semaphore address
+    semaphoreAddress = openSemaphore();
 
     // getting shared memory address
     memoryAddress = openSharedMemory();
@@ -77,9 +82,9 @@ int main() {
     // converting address to shared structure
     shared = (sharedVariables*) memoryAddress;
 
-    // packing orders
+    // sending orders
     while(1) {
-        pack();
+        send();
     }
 
     return 0;

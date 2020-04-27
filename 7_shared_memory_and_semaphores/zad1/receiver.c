@@ -33,17 +33,19 @@ void receive() {
     decrementSemaphore(semaphoresID);
 
     // checking if there is room for new order in the array
-    if(shared->ordersToPrepare + shared->ordersToSend < ARRAY_SIZE &&
-            (shared->firstToPrepare + shared->ordersToPrepare) % ARRAY_SIZE != shared->firstToSend) {
+    if(shared->ordersToPrepare + shared->ordersToSend < ARRAY_SIZE) {
+        int emptyIndex = 0;
+        while(shared->array[emptyIndex].number != 0)
+            emptyIndex++;
 
         // writing number (order) to the array
-        shared->array[(shared->firstToPrepare + shared->ordersToPrepare) % ARRAY_SIZE] = randomNumber;
+        shared->array[emptyIndex].number = randomNumber;
         shared->ordersToPrepare++;
 
         // printing current status of the orders
         printf("%d %s\n", getpid(), getCurrentTime());
         printf("Added number: %d. Orders to prepare: %d. Orders to send: %d.\n\n",
-                randomNumber, shared->ordersToPrepare, shared->ordersToSend);
+               randomNumber, shared->ordersToPrepare, shared->ordersToSend);
     }
 
     // incrementing semaphore
