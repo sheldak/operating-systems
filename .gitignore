@@ -68,3 +68,5 @@ main
 !producer*.txt
 !consumer.txt
 !howToUse.txt
+!Times.txt
+!histogram.txt

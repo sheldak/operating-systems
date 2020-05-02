@@ -1,0 +1,85 @@
+------- SIGN -------
+--- 1 thread ---
+Thread 0. Time: 1209
+All time: 1421
+
+--- 2 threads ---
+Thread 0. Time: 1576
+Thread 1. Time: 1239
+All time: 1767
+
+--- 4 threads ---
+Thread 0. Time: 1549
+Thread 1. Time: 1553
+Thread 2. Time: 2055
+Thread 3. Time: 1884
+All time: 2266
+
+--- 8 threads ---
+Thread 0. Time: 2083
+Thread 1. Time: 2570
+Thread 2. Time: 2318
+Thread 3. Time: 2333
+Thread 4. Time: 2353
+Thread 5. Time: 2286
+Thread 6. Time: 1930
+Thread 7. Time: 1814
+All time: 2756
+
+
+------- BLOCK -------
+--- 1 thread ---
+Thread 0. Time: 1022
+All time: 1217
+
+--- 2 threads ---
+Thread 0. Time: 539
+Thread 1. Time: 524
+All time: 709
+
+--- 4 threads ---
+Thread 0. Time: 366
+Thread 1. Time: 332
+Thread 2. Time: 508
+Thread 3. Time: 529
+All time: 666
+
+--- 8 threads ---
+Thread 0. Time: 192
+Thread 1. Time: 242
+Thread 2. Time: 241
+Thread 3. Time: 274
+Thread 4. Time: 240
+Thread 5. Time: 235
+Thread 6. Time: 221
+Thread 7. Time: 173
+All time: 522
+
+
+------- INTERLEAVED -------
+--- 1 thread ---
+Thread 0. Time: 1050
+All time: 1252
+
+--- 2 threads ---
+Thread 0. Time: 596
+Thread 1. Time: 580
+All time: 774
+
+--- 4 threads ---
+Thread 0. Time: 366
+Thread 1. Time: 493
+Thread 2. Time: 350
+Thread 3. Time: 493
+All time: 665
+
+--- 8 threads ---
+Thread 0. Time: 348
+Thread 1. Time: 311
+Thread 2. Time: 311
+Thread 3. Time: 311
+Thread 4. Time: 311
+Thread 5. Time: 154
+Thread 6. Time: 165
+Thread 7. Time: 286
+All time: 720
