@@ -11,6 +11,14 @@ clean:
 runserver:
 		./server 1234 HOME
 
-run:
+run_one:
 		./client one unix HOME
-# 		./client two inet 127.0.0.1 1234
+
+run_two:
+		./client two inet 127.0.0.1 1234
+
+run_three:
+		./client three unix HOME
+
+run_four:
+		./client four inet 127.0.0.1 1234

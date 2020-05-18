@@ -2,6 +2,7 @@
 
 char name[MAX_NAME_SIZE];
 int domain;
+int ID = -1;
 
 struct sockaddr_un unix_address;
 struct sockaddr_in inet_address;
@@ -9,10 +10,23 @@ struct sockaddr_in inet_address;
 int socket_fd;
 
 int my_turn = 0;
+int sign = 0;
+int board[3][3];
 
-int move = -1;
+char opponents_name[MAX_NAME_SIZE];
+
+int game_started = 0;
 pthread_mutex_t move_mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t move_cond = PTHREAD_COND_INITIALIZER;
+
+void write_message(int type) {
+    message *msg = malloc(sizeof(message));
+
+    msg->type = type;
+    msg->ID = ID;
+    if(write(socket_fd, msg, sizeof(message)) < 0) perror("Cannot write message");
+
+    free(msg);
+}
 
 void terminate() {
     // closing socket
@@ -29,11 +43,24 @@ void handle_SEGV_signal() {
 }
 
 void handle_INT_signal() {
+    write_message(KILL);
+
     // terminating process
     exit(0);
 }
 
-void print_board(int board[3][3]) {
+void copy_board(message *msg, int to_message) {
+    for(int i=0; i<3; i++) {
+        for(int j=0; j<3; j++) {
+            if (to_message == 0)
+                board[i][j] = msg->board[i][j];
+            else
+                msg->board[i][j] = board[i][j];
+        }
+    }
+}
+
+void print_board() {
     for(int i=0; i<3; i++) {
         if(i == 1 || i == 2)
             printf("------\n");
@@ -51,9 +78,10 @@ void print_board(int board[3][3]) {
         }
         printf("\n");
     }
+    printf("\n");
 }
 
-int check_win(int board[3][3], int my_sign) {
+int check_win() {
     int win = 0;
     for(int i=0; i<3; i++) {
         if(board[i][0] == board[i][1] && board[i][0] == board[i][2]) {
@@ -85,9 +113,21 @@ int check_win(int board[3][3], int my_sign) {
             win = O;
     }
 
-    if(win == 0)
-        return 0;
-    else if(win == my_sign)
+    if(win == 0) {
+        int all_occupied = 1;
+        for(int i=0; i<3; i++) {
+            for(int j=0; j<3; j++) {
+                if(board[i][j] == 0)
+                    all_occupied = 0;
+            }
+        }
+
+        if(all_occupied == 0)
+            return 0;
+        else
+            printf("Tie!\n");
+    }
+    else if(win == sign)
         printf("Victory!\n");
     else
         printf("Defeat!\n");
@@ -95,10 +135,7 @@ int check_win(int board[3][3], int my_sign) {
     return 1;
 }
 
-_Noreturn void *communicate() {
-    int ID = -1;
-    int sign = 0;
-
+_Noreturn void *initialize_and_receive() {
     // message structure
     message *msg = malloc(sizeof(message));
 
@@ -108,92 +145,123 @@ _Noreturn void *communicate() {
 
     if(write(socket_fd, msg, sizeof(message)) < 0) perror("Cannot write message with name");
 
-    // waiting for name acceptance
-    if(read(socket_fd, msg, sizeof(message)) < 0) perror("Cannot read name acceptance");
+    // receiving messages
+    while (1) {
+        // waiting for message from server
+        if (read(socket_fd, msg, sizeof(message)) < 0) perror("Cannot read message");
 
-    // interpreting response after name message
-    if(msg->type == STOP) {
-        printf("Not unique name\n");
-        exit(0);
-    }
-    else if(msg->type == WAIT && read(socket_fd, msg, sizeof(message)) < 0)
-        perror("Cannot read start game message");
+        if(msg->type == INIT) {
+            // setting variables
+            ID = msg->ID;
+            sign = msg->sign;
+            strcpy(opponents_name, msg->name);
+            copy_board(msg, 0);
 
-    if(msg->type == INIT) {
-        ID = msg->ID;
-        sign = msg->sign;
+            if (msg->sign == X)
+                my_turn = 1;
 
-        if(msg->sign == X)
-            my_turn = 1;
-    }
+            // messages
+            printf("Started game with player: %s\n", opponents_name);
 
-    // communication
-    while(1) {
-        if(my_turn == 0) {
+            print_board();
 
+            if (my_turn == 0)
+                printf("Opponent's turn\n");
+            else
+                printf("My turn\n");
+
+            game_started = 1;
         }
+        else if(msg->type == STOP) {
+            ID = msg->ID;
+            printf("Not unique name\n");
+            write_message(STOP);
+            exit(0);
+        }
+        else if(msg->type == WAIT) {
+            ID = msg->ID;
+            printf("Waiting for opponent\n");
+        }
+        else if(msg->type == MOVE) {
+            // locking mutex
+            pthread_mutex_lock(&move_mutex);
+
+            // copying board
+            copy_board(msg, 0);
+
+            // printing board after opponent's move
+            print_board();
+
+            // checking if someone wins
+            int win = check_win();
+
+            // starting my turn
+            my_turn = 1;
+
+            // unlocking mutex
+            pthread_mutex_unlock(&move_mutex);
+
+            if(win == 1) {
+                write_message(STOP);
+                exit(0);
+            }
+            else
+                printf("My turn\n");
+        }
+        else if(msg->type == KILL) {
+            write_message(STOP);
+            exit(0);
+        }
+        else if(msg->type == PING)
+            write_message(PING);
+    }
+}
+
+void handle_move(char *move_text) {
+    char *rest;
+    int move = (int) strtol(move_text, &rest, 10) - 1;
+
+    if(game_started == 0)
+        printf("Still waiting for opponent\n");
+    else if(move >= 0 && move < 9) {
+        if(my_turn == 0)
+            printf("It's not my turn\n");
+        else if(board[move / 3][move % 3] != 0)
+            printf("You can't make that move\n");
         else {
             // locking mutex
             pthread_mutex_lock(&move_mutex);
 
-            // waiting for next move
-            while (move == -1) {
-                pthread_cond_wait(&move_cond, &move_mutex);
-
-                if(msg->board[move/3][move%3] != 0) {
-                    move = -1;
-                    printf("Can't make this move\n");
-                }
-            }
-
             // making move
-            msg->board[move/3][move%3] = sign;
+            board[move / 3][move % 3] = sign;
 
             // printing board
-            print_board(msg->board);
+            print_board();
 
             // checking if someone wins
-            int win = check_win(msg->board, sign);
+            int win = check_win();
 
-            // continue game
-            if(win == 0) {
+            // sending move to the opponent
+            message *msg = malloc(sizeof(message));
 
-            }
-            // end game
-            else {
+            msg->type = MOVE;
+            msg->ID = ID;
+            copy_board(msg, 1);
 
-            }
+            if (write(socket_fd, msg, sizeof(message)) < 0) perror("Cannot write message with new move");
 
             // ending my turn
             my_turn = 0;
 
             // unlocking mutex
             pthread_mutex_unlock(&move_mutex);
-        }
-    }
 
-    return (void*) 0;
-}
-
-void handle_move(char *move_text) {
-    char *rest;
-    int move_int = (int) strtol(move_text, &rest, 10);
-
-    if(move_int >= 0 && move_int < 9) {
-        if(my_turn == 0)
-            printf("It's not my turn\n");
-        else {
-            // locking mutex
-            pthread_mutex_lock(&move_mutex);
-
-            // setting next move
-            move = move_int;
-
-            // informing connection thread about new move
-            pthread_cond_broadcast(&move_cond);
-
-            // unlocking mutex
-            pthread_mutex_unlock(&move_mutex);
+            if(win == 1) {
+                write_message(STOP);
+                exit(0);
+            }
+            else
+                printf("Opponent's turn\n");
         }
     }
     else
@@ -237,7 +305,7 @@ int main(int argc, char **argv) {
         if (socket_fd < 0) perror("Cannot create unix socket");
 
         // connecting to the server
-        if(connect(socket_fd, (struct sockaddr*) &unix_address, sizeof(unix_address)) == -1)
+        if(connect(socket_fd, (struct sockaddr*) &unix_address, sizeof(struct sockaddr*)) == -1)
             perror("Cannot connect by unix address");
     }
     else {
@@ -245,11 +313,11 @@ int main(int argc, char **argv) {
         if(argc < 5) perror("Too few arguments");
 
         inet_address.sin_family = AF_INET;
-        if(inet_aton(argv[3], &inet_address.sin_addr) == 0) perror("Invalid IP address");
+        if(inet_pton(AF_INET, argv[3], &inet_address.sin_addr) < 0) perror("Invalid IP address");
 
         // forth argument - port
         char *rest;
-        inet_address.sin_port = (uint32_t) strtol(argv[4], &rest, 10);
+        inet_address.sin_port = htons((int) strtol(argv[4], &rest, 10));
 
         // creating socket
         socket_fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -262,7 +330,7 @@ int main(int argc, char **argv) {
 
     // making thread which is receiving and sending messages
     pthread_t communicationThread;
-    if (pthread_create(&communicationThread, NULL, communicate, NULL) != 0)
+    if (pthread_create(&communicationThread, NULL, initialize_and_receive, NULL) != 0)
         perror("Cannot create communication thread");
 
     // main thread is handling terminal commands
@@ -273,8 +341,4 @@ int main(int argc, char **argv) {
         getline(&move_text, &length, stdin);
         handle_move(move_text);
     }
-
-//    printf("%d\n", inet_address.sin_addr.s_addr);
-//    printf("%u\n", inet_address.sin_port);
-
 }

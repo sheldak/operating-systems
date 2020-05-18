@@ -36,6 +36,7 @@
 #define INIT 3
 #define MOVE 4
 #define STOP 5
+#define KILL 6
 
 #define X 1
 #define O 2
@@ -47,43 +48,5 @@ struct message {
     int sign;
     int board[3][3];
 } typedef message;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-#define SEMAPHORE_ID 'A'
-#define MEMORY_ID 'A'
-
-#define ARRAY_SIZE 20
-#define MAX_NUMBER 100
-
-struct order {
-    int number;
-    int packed;
-} typedef order;
-
-struct sharedVariables {
-    order array[ARRAY_SIZE];
-    int ordersToPrepare;
-    int ordersToSend;
-} typedef sharedVariables;
-
-char *getCurrentTime();
-int openSemaphore();
-void *openSharedMemory();
-void decrementSemaphore(int semaphoreID);
-void incrementSemaphore(int semaphoreID);
 
 #endif
