@@ -250,6 +250,9 @@ _Noreturn void *communicate() {
 
                     pthread_mutex_unlock(&epoll_mutex);
                     pthread_mutex_unlock(&ping_mutex);
+
+                    if(waiting_client == msg->ID)
+                        waiting_client = -1;
                 }
                 else if(msg->type == PING) {
                     // saving that the client responded to ping
